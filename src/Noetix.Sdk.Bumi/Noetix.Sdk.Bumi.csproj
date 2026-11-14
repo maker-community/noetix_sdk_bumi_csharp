@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <RootNamespace>Noetix.Sdk.Bumi</RootNamespace>
+    <AssemblyName>Noetix.Sdk.Bumi</AssemblyName>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+
+    <PackageId>Noetix.Sdk.Bumi</PackageId>
+    <Version>3.1.0-preview.1</Version>
+    <Description>Unofficial community C# binding for the official Noetix Bumi SDK (noetix_sdk_bumi). Not affiliated with Noetix Robotics.</Description>
+    <PackageTags>bumi;noetix;robot;humanoid;dds</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Noetix.Sdk.Bumi.Tests" />
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+    <None Include="runtimes\**" Pack="true" PackagePath="runtimes" Condition="Exists('runtimes')" />
+  </ItemGroup>
+
+</Project>
