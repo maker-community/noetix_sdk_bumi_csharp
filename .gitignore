@@ -1,0 +1,17 @@
+bin/
+obj/
+native/build/
+.vs/
+*.user
+*.suo
+*.nupkg
+
+# Built native libraries embed the official SDK; never commit or redistribute them from here
+*.so
+*.so.*
+*.a
+
+# Official SDK checkouts and bundled runtime assets
+third_party/
+noetix_sdk_bumi/
+src/**/runtimes/
