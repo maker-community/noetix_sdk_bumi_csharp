@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Noetix.Sdk.Bumi/Noetix.Sdk.Bumi.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Noetix.Sdk.Bumi.Tests/Noetix.Sdk.Bumi.Tests.csproj" />
+  </Folder>
+  <Folder Name="/samples/">
+    <Project Path="samples/Noetix.Sdk.Bumi.StatusMonitor/Noetix.Sdk.Bumi.StatusMonitor.csproj" />
+  </Folder>
+</Solution>
