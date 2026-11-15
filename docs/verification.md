@@ -20,10 +20,12 @@ Verified against official SDK 3.1.0 (`noetix_sdk_bumi`, shallow clone, November 
 - `HighController.Init()` with no robot reachable does not return (still blocked after 60 s). Call it off the UI thread
   with a timeout.
 - The x86_64 build on Ubuntu 22.04 links `libssl.so.3`, not `libssl1.1` as the official FAQ suggests.
+- Separately from the SDK, a community Xbox receiver driver was built and tested for Linux input on one Bumi compute
+  board. See [xbox-wireless-controller.md](xbox-wireless-controller.md) for the environment and limits.
 
 ## Not verified
 
-- Anything on a physical Bumi, including: `Init()` against a real motion controller, status callbacks, `PublishCmd`,
+- SDK binding behavior on a physical Bumi, including: `Init()` against a real motion controller, status callbacks, `PublishCmd`,
   audio/video streams, and what the `format` field of `AudioStream` means beyond the official example (`2`).
 - aarch64 (the Jetson compute board) builds and runtime.
 - Behaviour when the application stops sending commands (does the robot stop by itself?).

@@ -23,7 +23,7 @@ libnoetix_sdk.a + libddsc.so    official SDK, NOT included in this repository
 | `src/Noetix.Sdk.Bumi/` | C# binding library (`net8.0`, `net10.0`) |
 | `tests/Noetix.Sdk.Bumi.Tests/` | ABI contract tests (struct layout, enum values, header ⇄ binding ⇄ implementation parity) |
 | `samples/Noetix.Sdk.Bumi.StatusMonitor/` | Read-only smoke test that prints robot state |
-| `docs/` | [edu-pro-research.md](docs/edu-pro-research.md): EDU-Pro hardware/SDK research and an on-robot checklist; [verification.md](docs/verification.md): what has and has not been verified |
+| `docs/` | [edu-pro-research.md](docs/edu-pro-research.md): EDU-Pro research; [verification.md](docs/verification.md): SDK verification; [xbox-wireless-controller.md](docs/xbox-wireless-controller.md): compute-board Xbox receiver setup and safety |
 
 ## Build
 
@@ -97,8 +97,8 @@ developing. Callbacks run on SDK threads and must return quickly.
 ## Status
 
 See [docs/verification.md](docs/verification.md) for exactly what has and has not been verified. In short: the native
-layer builds with GCC 11 on x86_64 and the C# ⇄ native path is tested without a robot; **nothing has been run against a
-physical robot or on aarch64 yet.**
+layer builds with GCC 11 on x86_64 and the C# ⇄ native path is tested without a robot; **the SDK binding has not been
+run against a physical robot or on aarch64 yet.**
 
 ## License
 
