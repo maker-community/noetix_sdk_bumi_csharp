@@ -31,6 +31,7 @@ libnoetix_sdk.a + libddsc.so    official SDK, NOT included in this repository
 | `src/Noetix.Sdk.Bumi/` | C# 绑定库 / C# binding library (`net8.0`, `net10.0`) |
 | `tests/Noetix.Sdk.Bumi.Tests/` | ABI 契约测试：结构体布局、枚举值和头文件 ⇄ 绑定 ⇄ 实现的一致性 / ABI contract tests: struct layouts, enum values and header ⇄ binding ⇄ implementation parity |
 | `samples/Noetix.Sdk.Bumi.StatusMonitor/` | 输出机器人状态的只读冒烟测试 / Read-only smoke test that prints robot state |
+| `samples/Noetix.Sdk.Bumi.FollowDemo/` | [仅离线仿真的跟随原型](samples/Noetix.Sdk.Bumi.FollowDemo/README.md) / [Offline-only follow simulation prototype](samples/Noetix.Sdk.Bumi.FollowDemo/README.md) |
 | `docs/` | [edu-pro-research.md](docs/edu-pro-research.md)：EDU-Pro 调研 / EDU-Pro research；[compute-board-services.md](docs/compute-board-services.md)：算力板服务和二次开发 / compute-board services and custom development；[verification.md](docs/verification.md)：SDK 验证情况 / SDK verification；[xbox-wireless-controller.md](docs/xbox-wireless-controller.md)：算力板 Xbox 接收器配置与安全 / compute-board Xbox receiver setup and safety |
 
 ## Build

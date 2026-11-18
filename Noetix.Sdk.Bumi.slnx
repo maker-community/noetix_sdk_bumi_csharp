@@ -6,6 +6,7 @@
     <Project Path="tests/Noetix.Sdk.Bumi.Tests/Noetix.Sdk.Bumi.Tests.csproj" />
   </Folder>
   <Folder Name="/samples/">
+    <Project Path="samples/Noetix.Sdk.Bumi.FollowDemo/Noetix.Sdk.Bumi.FollowDemo.csproj" />
     <Project Path="samples/Noetix.Sdk.Bumi.StatusMonitor/Noetix.Sdk.Bumi.StatusMonitor.csproj" />
   </Folder>
 </Solution>

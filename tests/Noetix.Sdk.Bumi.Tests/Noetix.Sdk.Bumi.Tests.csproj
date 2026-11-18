@@ -15,6 +15,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Noetix.Sdk.Bumi\Noetix.Sdk.Bumi.csproj" />
+    <ProjectReference Include="..\..\samples\Noetix.Sdk.Bumi.FollowDemo\Noetix.Sdk.Bumi.FollowDemo.csproj" />
   </ItemGroup>
 
 </Project>

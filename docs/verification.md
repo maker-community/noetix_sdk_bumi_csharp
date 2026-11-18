@@ -17,6 +17,20 @@ Verified against official SDK 3.1.0 (`noetix_sdk_bumi`, shallow clone, November 
 
 ## Observed
 
+- In an isolated loopback-only network namespace (`unshare -Urn`) with the community MuJoCo simulator
+  (`bumi_mujoco`), the C# binding receives 21-motor status at 500 Hz **only after** the simulator's status
+  writer declares a 2 ms DDS deadline. With the unmodified writer, the official SDK readers (C++ and C#)
+  receive zero samples while a plain Python reader still works.
+- The HighController command path was exercised against the simulator: `Switch` then `Walk` moved `workmode`
+  1 → 2. Earlier follow-distance results were calculated from commanded motion rather than the MuJoCo pose,
+  and the displayed target had a separate timeline. **Those results do not verify following or clearance.**
+  The revised follow prototype is offline-only and uses synthetic observations from the actual simulated pose;
+  it does not test the SDK command path or represent camera perception or real-world safety.
+- In one 15-second x86_64 MuJoCo scripted approach/dropout scenario, the revised prototype measured a minimum
+  base-to-marker center distance of 1.816 m, returned zero commands for 100 simulated dropout frames, and
+  moved the base 0.008 m during the dropout. The marker has no collision; these results are not a collision
+  test or a safety distance. Headless execution exited successfully; the WSLg viewer completed the simulation
+  but terminated with a native memory error during shutdown.
 - `HighController.Init()` with no robot reachable does not return (still blocked after 60 s). Call it off the UI thread
   with a timeout.
 - The x86_64 build on Ubuntu 22.04 links `libssl.so.3`, not `libssl1.1` as the official FAQ suggests.
