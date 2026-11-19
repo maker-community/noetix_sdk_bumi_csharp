@@ -1,5 +1,7 @@
 # Bumi 算力板服务与二次开发 / Compute-board services and custom development
 
+[中文](#中文) | [english](#english)
+
 ## 中文
 
 ### 范围和安全
@@ -136,118 +138,174 @@ ls -l /dev/video*
 
 ---
 
-## English
+## english
 
 ### Scope and safety
 
-This is a **2026-11-15** read-only snapshot of one Bumi EDU-Pro user compute board: Ubuntu 22.04.5,
-ARM64, `5.15.185-tegra`. Versions, units and states vary by device and update. **Observed** means this
-board; **official** means the vendor documentation; **inference** requires validation. No motion-board
-connection or probe, SDK example, motion command, or service modification was performed.
+This is a read-only snapshot of one Bumi EDU-Pro user compute board, inspected on **2026-11-15**; the system
+is Ubuntu 22.04.5, ARM64, `5.15.185-tegra`. System versions, services and states may change with the device,
+configuration or upgrades and must not be treated as an inventory of every Bumi.
 
-The inspection covered compute-board systemd units, the current user manager, timers, selected processes,
-listeners, scripts and device nodes. Ordinary-user visibility is incomplete. The default Docker socket was
-absent, which does not exclude other containers or runtimes. The inspection cannot rule out other users'
-services, dormant software, application tasks, cloud services or motion-board processes.
+- **[measured]** means observed on the user compute board during this inspection; **[official]** means
+  explicitly recorded in the vendor documentation; **[inference]** means a possible explanation that has not
+  been verified on a real robot. No motion-control board was connected or probed, no SDK example was run, no
+  motion command was sent and no service was changed.
+- The scan covered mainly the systemd system services of the compute board, the current user services,
+  timers, some processes and listening ports, the specified scripts and device nodes. The process and port
+  information of an ordinary user may be incomplete; the default Docker socket was not found, which does not
+  mean that there are no other container runtimes or containers. This cannot rule out other user services,
+  programs that are not running, in-application background tasks, cloud services or motion-board programs.
+- Developers only operate the user compute board and do not access the motion-control board. Do not decide
+  that a service can be stopped based only on its name, port or systemd dependencies; before stopping,
+  disabling or restarting any robot service, tell the operator first and confirm the impact and the recovery
+  plan. Development and motion tests follow the official safety manual; without explicit permission and
+  confirmation that the robot is on a gantry with the area cleared, do not send motion or enable commands and
+  do not run LowController routines.
+- File paths, ports and states only explain this observation and are not a stable API. Do not disclose
+  network addresses, device identifiers, logs, APNs, credentials or video/audio data.
 
-Operate only on the user compute board. Tell the operator and agree on impact and recovery before stopping,
-disabling or restarting any robot service. Do not send motion or enable commands without explicit permission,
-a gantry and a cleared area; do not use LowController for experiments. Redact network details, identifiers,
-logs, APNs, credentials and media before sharing. See the [official documentation](https://web.noetixrobotics.com/docs/),
-[official SDK](https://github.com/Noetix-Robotics/noetix_sdk_bumi) and [verification status](verification.md).
+References: [official Bumi documentation](https://web.noetixrobotics.com/docs/),
+[official SDK](https://github.com/Noetix-Robotics/noetix_sdk_bumi),
+[EDU-Pro custom-development research](edu-pro-research.md), [SDK verification status](verification.md).
 
-### 1. Services and stop guidance
+### 1. Compute-board services: purpose and whether they can be stopped
 
-`enabled` means configured for autostart, and `active (running)` means a process is running; neither proves
-the feature is healthy. This is a relevant subset, not a complete list of OS units.
+`enabled` means configured to start automatically, `active (running)` means the process is running; neither
+proves that the feature is healthy. The table below lists the services that are relevant to the requirements,
+not every unit on the system.
 
-| Service / observed state | Evidence and usage | Recommendation |
+| Service / state | Purpose and evidence | Recommendation |
 | --- | --- | --- |
-| `noetix-video-capture.service` / running, enabled | Observed description: RealSense DDS Video Capture; process `demo`; ordered after `network-online.target`. The official camera guide says to stop the vendor capture program before direct camera access. | **Conditionally stoppable temporarily**, after operator agreement and a recovery plan. App video and other consumers may be affected; the scope is unverified. Do not disable autostart by default. |
-| `network_4g.service` / running, enabled | Runs `net4g_start.sh`, with SIM, APN/PDP, RNDIS, interface, DHCP and connectivity-check logic. | Do not stop yet: possible cellular and dependent-feature impact is unknown. |
-| `NetworkManager.service`, `wpa_supplicant.service`, `ssh.service` / running | Network and remote-access services. | Do not stop, especially during remote access. |
-| `dbus.service`, `systemd-resolved.service` / running | System bus and name resolution; the 4G unit requires D-Bus. | Do not stop casually; full dependencies are unknown. |
-| `nvfancontrol.service`, `nvargus-daemon.service`, `nvs-service.service` and other NVIDIA services / running | Jetson platform services described as fan control, Argus and sensor HAL. | Do not stop casually; cooling and sensors may be affected. |
-| `openvpn.service` / `active (exited)`, enabled | Its unit state does not establish a working VPN or vendor ownership. | Purpose unknown; do not stop. |
-| `ModemManager.service` / unit not found | The 4G unit declares `Wants` and `After`; no running ModemManager was found, although `mmcli` exists. | A `Wants` relationship does not prove a running modem service. Do not install or start it to experiment. |
+| `noetix-video-capture.service` / `active (running)`, `enabled` | **[measured]** described as RealSense DDS Video Capture, the running program is named `demo`, started after `network-online.target`. **[official]** On models with a compute board, the official video-streaming program must be stopped before calling the camera directly. | **Conditionally stoppable for a while**, only after confirming the need for direct camera access, informing the operator and preparing recovery; the App video stream and other consumers may be affected, and the scope of the impact is unverified. Do not disable autostart by default. |
+| `network_4g.service` / `active (running)`, `enabled` | **[measured]** starts the Bash script `net4g_start.sh`, which involves SIM status, PDP/APN, RNDIS, network interfaces, DHCP and periodic connectivity checks, see the next section. | **Do not stop for now**; it may affect cellular connectivity and the features that depend on it, and the actual impact is unknown. |
+| `NetworkManager.service`, `wpa_supplicant.service`, `ssh.service` / running | **[measured]** common network and remote-access services; **[inference]** changes may interrupt the connection or communication. | Do not stop; especially do not stop them during remote operation. |
+| `dbus.service`, `systemd-resolved.service` / running | **[measured]** system message bus and name resolution services; `network_4g.service` declares that it requires D-Bus. | Do not stop them casually; the dependency scope has not been fully verified. |
+| `nvfancontrol.service`, `nvargus-daemon.service`, `nvs-service.service` etc. / running | **[measured]** NVIDIA/Jetson platform services, described as fan control, Argus and sensor HAL respectively. | Do not stop them casually; cooling or sensors may be affected, and the specific impact is unverified. |
+| `openvpn.service` / `active (exited)`, `enabled` | **[measured]** the unit is in the exited state; this proves neither a usable VPN connection nor that it belongs to the vendor. | Purpose undetermined; do not stop. |
+| `ModemManager.service` / unit not found | **[measured]** `network_4g.service` declares `Wants` and `After`, but no ModemManager was running at the time; `mmcli` exists on the system. | `Wants` is not proof of a successful start; do not install, start or change anything in order to experiment. |
 
-Reverse systemd dependency queries for the capture and 4G units listed only the units themselves. This does
-not exclude DDS, device, network, script or application-level consumers.
+**[measured]** Reverse systemd dependency queries for the video-streaming and 4G services listed only the
+services themselves; this only shows that the query revealed no other dependent units, and cannot rule out
+DDS, network, device, script or application-layer consumers.
 
-### 2. Does 4G mean a cellular SIM?
+### 2. Is the 4G module a cellular data SIM?
 
-**Observed by static inspection:** the 4G script looks for an interface and modem, checks SIM status,
-configures PDP/APN and RNDIS, uses DHCP and periodically checks connectivity and retries. This is cellular
-data connection logic rather than merely a Wi-Fi service. A running script does not prove the cellular
-connection works.
+**[measured: static analysis]** The script run by `network_4g.service` looks for network interfaces and modem
+devices, contains SIM status queries, PDP/APN configuration and RNDIS control, uses DHCP, and checks the
+connection and retries in a loop. This is logic written for **cellular mobile data connectivity**, not an
+ordinary Wi-Fi service guessed from its name. That the script itself is running does not mean that the
+cellular link is connected.
 
-**Unknown:** whether a modem is currently available, a SIM is installed or valid, the carrier or plan,
-whether data is currently used, or whether App and OTA depend on it. The inspection did not send modem
-queries: SIM checks describe script behavior, not an observed SIM state. RNDIS alone does not establish the
-network generation. Do not remove a SIM, issue AT commands or restart the service just to test. Consult
-the official App or vendor without disclosing SIM identifiers or account information.
+**[unconfirmed]** No query was sent to the modem this time, and it was not determined whether the physical
+module is online, whether a SIM is inserted, whether the SIM is valid, the carrier, the tariff, whether
+traffic currently goes over the cellular network, or whether the App/OTA depends on it. The SIM status query
+is **behavior that the script has**, not the SIM state observed this time; RNDIS also does not prove a
+particular network generation. Do not remove the SIM, send AT commands or restart services in order to
+verify. To confirm the actual plan and link, use the official App or ask the vendor first, so that SIM
+identifiers and account information are not exposed.
 
-The script's reported mode is world-writable; ACLs, mount status and effective writability were not tested.
-Do not modify it or its permissions yourself; ask the vendor whether this is expected and how to update it safely.
+**[measured]** The script file mode shows as writable by all users; ACLs, the mount state and the actual
+writability were not verified. Do not change the permissions or the script yourself; ask the vendor to
+confirm whether this is the expected configuration and what the safe update plan is.
 
-### 3. App, LAN and OTA
+### 3. App, LAN control and OTA: known and unknown
 
-| Feature | Evidence and limits | Development guidance |
+| Feature | Evidence and limits | Guidance for custom development |
 | --- | --- | --- |
-| Mobile App | The [official App guide](https://web.noetixrobotics.com/docs/#三手机app连接设备及操作控制) describes robot operation and warns about Bluetooth pairing. No explicitly named App-control systemd unit was found on the compute board. | Do not assume its control path uses this board, Wi-Fi, Bluetooth or a particular port. Do not choose “forget device” in the phone settings. |
-| LAN control | Observed TCP listeners: 22, 53, 111; UDP: 53, 111, 5353 and dynamic ports. `demo` owned UDP 7410, 7411 and a dynamic port; some process identities were unavailable. The vendor describes the capture service as DDS. | Ports alone do not establish an App protocol, reachability, authentication or control API. Ports can change. Do not scan the motion board, send packets to unknown services or treat DDS ports as a public API. |
-| OTA | The official product table says OTA is supported. Standard OS update timers were present, but no explicitly named Noetix OTA unit or timer was found. | This does not establish whether OTA runs elsewhere, its scope or its 4G dependency. Ubuntu updates are not necessarily robot OTA. Ask the vendor about upgrades, rollback and persistence of custom software. |
-| Motion | The official [HighController guide](https://web.noetixrobotics.com/docs/#五应用开发-highcontroller) describes an SDK client communicating over DDS with the factory motion program. | An SDK interface is not necessarily a same-named compute-board service. Do not access or modify motion-board services. |
-| Audio and voice | The official [MediaController guide](https://web.noetixrobotics.com/docs/#七音频开发) describes DDS communication with the motion-board voice module and audio/Agent interfaces. | No matching compute-board unit does not mean voice is absent; the processes, App route and cloud dependencies remain unknown. |
-| Camera and video | The [official camera guide](https://web.noetixrobotics.com/docs/#八相机例程) places the EDU camera on the compute board and directs users to stop capture before direct access. | `/dev/video0`–`/dev/video3` were present. An unprivileged `fuser` check returned no owners, which does not prove the devices are free. Device numbers and Agent dependencies need verification. |
+| Mobile App | **[official]** [NOETIX Run App](https://web.noetixrobotics.com/docs/#三手机app连接设备及操作控制) supports robot operation, and the documentation contains a Bluetooth connection warning. **[measured]** No systemd unit explicitly named as an App control service was found on the compute board; that does not mean that the feature does not exist. | Do not infer that control necessarily goes through the compute board, Wi-Fi, Bluetooth or a particular port. Do not “forget device” in the system settings of the phone. |
+| LAN App interface | **[measured]** On this machine TCP 22, 53, 111 and UDP 53, 111, 5353 and several dynamic ports were observed; `demo` was using UDP 7410, 7411 and dynamic ports at the time. Some process names were invisible due to permissions; the description of the video-streaming service mentions DDS. | Listening ports and process names cannot prove the App protocol, the reachable scope, the authentication method or the control API; ports change. Do not scan the motion-control board, send packets to unknown ports, or treat DDS ports directly as a public interface. |
+| OTA | **[official]** The product specification table states that OTA upgrade is supported. **[measured]** Standard system update timers were found, but no explicitly named Noetix OTA systemd unit or timer was found. | This cannot establish that OTA does not exist, where it runs, what it updates or whether it depends on 4G; Ubuntu updates and robot OTA are not the same thing. Ask the vendor about upgrades, rollback and the policy for retaining custom software. |
+| Motion service | **[official]** The SDK client of [HighController](https://web.noetixrobotics.com/docs/#五应用开发-highcontroller) communicates with the motion program over DDS, and the motion program is responsible for the vendor's policies. | The SDK is an application interface and does not mean that there is a same-named systemd service on the compute board; motion-board services that are not exposed must not be stopped or investigated. |
+| Audio/voice | **[official]** [MediaController](https://web.noetixrobotics.com/docs/#七音频开发) communicates with the voice module of the motion board over DDS and provides audio streams, the speaker and Agent configuration. | Not finding an explicitly matching service on the compute board does not mean that the robot has no voice capability; the service process, the App routing and the cloud dependencies are unconfirmed. |
+| Camera and video streaming | **[official]** The [camera guide](https://web.noetixrobotics.com/docs/#八相机例程) explains that the EDU camera is connected to the compute board and that librealsense can be used; stop the official video streaming before calling the camera directly. | **[measured]** `/dev/video0`–`/dev/video3` exist; with ordinary permissions `fuser` showed no owners, which is not enough to prove that nobody is using them. The relationship between the device numbers, the video streaming and the Agent needs to be measured. |
 
-The vendor says compute-board models must continuously publish external video to the audiovisual system
-to receive desensitized video. This does not establish that the existing capture service performs that
-publication or that stopping it necessarily breaks the Agent. An `rs-fw-update` filename was observed;
-that alone does not identify a robot OTA service or make running a firmware update safe.
+**[official]** Models with a compute board need to continuously publish an external video stream to the
+audio-video interaction system in order to obtain its desensitized video stream; this does not mean that the
+existing video-streaming service necessarily performs that publication, or that the Agent necessarily fails
+after it is stopped. **[measured]** The `rs-fw-update` that was found is a file name; it must not be taken as
+a robot OTA service, and it does not make running a firmware update safe.
 
-### 4. Integration paths
+### 4. Integration paths for custom features
 
-1. **Read-only status:** deploy an app on the compute board and subscribe with HighController without
-   calling `PublishCmd`. See [StatusMonitor](../samples/Noetix.Sdk.Bumi.StatusMonitor/Program.cs).
-   Prepare the official SDK, native libraries and DDS configuration using the [build instructions](../README.md#build).
-   `Init()` can block when disconnected. The command in the Chinese section uses `timeout` to bound the
-   example process; replace the placeholder configuration path. This binding and sample have **not been
-   verified on a physical robot or aarch64**. Do not run the motion example in the README as a read-only test.
-2. **Voice:** use MediaController for microphone subscriptions, audio processing and speaker output.
-   Capture/playback controls and Agent configuration have side effects and require impact assessment.
-   The official documentation currently lists 8-channel capture, 2-channel playback, 16 kHz and
-   `format=2` (little-endian 16-bit); check the actual SDK/device data.
-3. **Vision:** decide whether to retain vendor video first. For direct camera access, follow the approved
-   capture-service procedure below, then use librealsense. Device-node numbers are not portable identifiers.
-4. **Custom LAN app:** host your own service on the compute board and use the official SDK; design separate
-   authentication, authorization, network isolation, timeouts and auditing. Do not assume the vendor App
-   protocol is public or stable. Future motion features require an independent safety arbiter; do not let an
-   LLM or remote request drive the robot directly.
+1. **Read-only status monitoring**: deploy your own application on the compute board and subscribe to status
+   through HighController without calling `PublishCmd`. This repository provides
+   [StatusMonitor](../samples/Noetix.Sdk.Bumi.StatusMonitor/Program.cs); its `Init()` may block for a long
+   time when it cannot connect. First prepare the official SDK, the native libraries and the DDS
+   configuration as described in the [build instructions](../README.md#build), and make sure that the
+   process can find the native dependencies. Example usage follows; `timeout` only limits that example
+   process and cannot guarantee that SDK-internal resources are released immediately:
 
-### 5. Read-only inspection and capture recovery
+   ```bash
+   timeout 30s dotnet run --project samples/Noetix.Sdk.Bumi.StatusMonitor -- /path/to/dds.xml 10
+   ```
 
-The commands in Chinese section 5 run on the **already logged-in user compute board**, without `sudo`.
-Redact output before sharing. `ss` process ownership may be incomplete; do not extend the checks to probe
-the motion board. Service dependencies have not been verified by stopping services or collecting media.
+   Replace `/path/to/dds.xml` with the configuration of this machine; the example and this binding **have not
+   been verified on a real robot or on aarch64**. Do not use the motion example in the README that contains
+   `PublishCmd` as a read-only test.
+2. **Voice**: use `MediaController` to subscribe to the internal microphones, process audio or output to the
+   speaker; starting and stopping capture, playback and Agent configuration are operations with side effects,
+   so confirm the impact first. **[official]** Capture uses 8 channels and playback 2 channels, and the
+   documentation currently lists 16 kHz and `format=2` (little-endian 16-bit); the device and the values
+   returned by the SDK take precedence.
+3. **Vision**: first assess whether to keep the official video streaming. When direct camera access is
+   needed, follow the approval and recovery procedure in the next section, then use librealsense. Do not
+   hard-code device node numbers as a convention that holds across devices.
+4. **Custom LAN application**: prefer running your own service on the compute board and connecting through
+   the official SDK; design authentication, authorization, network isolation, timeouts and auditing
+   separately. Do not assume that the internal protocol of the official App is a public or stable interface.
+   Any future motion capability needs independent safety arbitration; a large model or a remote request must
+   not drive the robot directly.
 
-The following is a manual procedure based on the [official camera guide](https://web.noetixrobotics.com/docs/#八相机例程);
-**it was not executed in this investigation**, and it does not apply to other services:
+### 5. Reproducible read-only inspection
 
-1. Inform the operator and obtain explicit agreement. Confirm nobody depends on App video or other camera
-   consumers; record the original active/enabled states and prepare access and contacts for recovery.
-2. If temporary direct camera access is required, an authorized operator may run
-   `sudo systemctl stop noetix-video-capture.service`. Do not run `disable`. Check the status and affected
-   features; stop the experiment and recover if anything is wrong.
-3. Exit the custom camera application first. If the service was originally running, an authorized operator
-   runs `sudo systemctl start noetix-video-capture.service`, checks the original state and manually verifies
-   App video and affected features. Do not start it if it was originally stopped; contact the vendor if
-   recovery fails. This stop/start procedure has not been tested on the robot.
+Run the following commands on the **already logged-in user compute board**; `sudo` is not required. The
+output may contain host or network information, so redact it before sharing. Do not disclose configuration,
+parameters or credentials with `systemctl cat`, logs or full process command lines.
 
-### 6. Questions for the vendor
+```bash
+systemctl list-units --type=service --all --no-pager
+systemctl list-unit-files --type=service --no-pager
+systemctl --user list-units --type=service --all --no-pager
+systemctl list-timers --all --no-pager
+systemctl show noetix-video-capture.service network_4g.service \
+  -p Description -p ActiveState -p SubState -p UnitFileState \
+  -p Requires -p Wants -p After -p PartOf
+systemctl list-dependencies --reverse --all noetix-video-capture.service
+systemctl list-dependencies --reverse --all network_4g.service
+ss -lntup
+ls -l /dev/video*
+```
 
-- Where do App control, video, voice and OTA run, and which interfaces are supported for custom applications?
-- Is a cellular modem/SIM supported, and does it affect OTA, remote access or voice? What happens on network loss?
-- Is the 4G script's reported permission intentional, and do upgrades retain custom software?
-- What consumes capture output; is camera sharing supported, and how should recovery be verified?
-- What are the safe behavior on SDK disconnect, supported stop mechanism and priority among control sources?
+Process ownership in `ss` may be incomplete due to permissions; the commands above only inspect the local
+machine, **do not extend them into scanning or probing the motion-control board**. Service dependencies were
+not verified this time by stopping services or capturing audio and video.
+
+### 6. Controlled change and recovery of the video-streaming service
+
+**The changes below were not performed this time.** This is a manual procedure based on the
+[official camera guide](https://web.noetixrobotics.com/docs/#八相机例程) and does not apply to other services:
+
+1. First inform the operator and obtain explicit consent, and confirm that nobody depends on the App video
+   stream or other camera usage; record the current `active` and `enabled` states and have the recovery
+   permissions and contact details ready. Do not perform motion tests.
+2. When the camera only needs to be released temporarily, an authorized operator runs
+   `sudo systemctl stop noetix-video-capture.service`; do not run `disable`. Then check the status and the
+   required features; if anything is abnormal, stop the experiment and recover.
+3. After testing, **exit your own camera program first**, have an authorized person run
+   `sudo systemctl start noetix-video-capture.service`, check that it returns to its original state, and
+   manually confirm the App video stream and the affected features. If it was not running originally, do not
+   start it on your own; contact the vendor if recovery fails. This procedure has not been verified by
+   stopping and starting on a real robot.
+
+### 7. Questions for the vendor
+
+- Which board or cloud hosts App control, video streaming, voice and OTA respectively? Which public
+  interfaces are suitable for custom applications?
+- What is the support status of the 4G module and the SIM, and does it affect OTA, remote access or voice?
+  What is the expected behavior on network loss and recovery?
+- Is the `network_4g` script permission the expected configuration, and are custom applications retained
+  after an upgrade?
+- Which features are affected after the video-streaming service is stopped, can the camera be shared or the
+  official video stream be subscribed, and how can successful recovery be checked?
+- What is the safe behavior when SDK communication is interrupted or the application exits, which stop
+  mechanisms are supported, and what is the priority among multiple control sources?

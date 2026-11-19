@@ -32,11 +32,16 @@ libnoetix_sdk.a + libddsc.so    official SDK, NOT included in this repository
 | `tests/Noetix.Sdk.Bumi.Tests/` | ABI 契约测试：结构体布局、枚举值和头文件 ⇄ 绑定 ⇄ 实现的一致性 / ABI contract tests: struct layouts, enum values and header ⇄ binding ⇄ implementation parity |
 | `samples/Noetix.Sdk.Bumi.StatusMonitor/` | 输出机器人状态的只读冒烟测试 / Read-only smoke test that prints robot state |
 | `samples/Noetix.Sdk.Bumi.FollowDemo/` | [仅离线仿真的跟随原型](samples/Noetix.Sdk.Bumi.FollowDemo/README.md) / [Offline-only follow simulation prototype](samples/Noetix.Sdk.Bumi.FollowDemo/README.md) |
-| `docs/` | [edu-pro-research.md](docs/edu-pro-research.md)：EDU-Pro 调研 / EDU-Pro research；[compute-board-services.md](docs/compute-board-services.md)：算力板服务和二次开发 / compute-board services and custom development；[verification.md](docs/verification.md)：SDK 验证情况 / SDK verification；[xbox-wireless-controller.md](docs/xbox-wireless-controller.md)：算力板 Xbox 接收器配置与安全 / compute-board Xbox receiver setup and safety |
+| `samples/Noetix.Sdk.Bumi.MotionTest/` | [高层动作实测（会动机器人）](samples/Noetix.Sdk.Bumi.MotionTest/README.md) / [High-level action test that moves the robot](samples/Noetix.Sdk.Bumi.MotionTest/README.md) |
+| `docs/` | [edu-pro-research.md](docs/edu-pro-research.md)：EDU-Pro 调研 / EDU-Pro research；[compute-board-services.md](docs/compute-board-services.md)：算力板服务和二次开发 / compute-board services and custom development；[motion-test.md](docs/motion-test.md)：真机高层动作（挥手）实测与复现 / on-robot high-level action test and reproduction；[verification.md](docs/verification.md)：SDK 验证情况 / SDK verification；[xbox-wireless-controller.md](docs/xbox-wireless-controller.md)：算力板 Xbox 接收器配置与安全 / compute-board Xbox receiver setup and safety |
 
 ## Build
 
 **构建**
+
+For .NET 10 installation and a manual read-only status check on the ARM64 compute board, see the
+[ARM64 board test guide](docs/arm64-board-test.md).
+在 ARM64 算力板上安装 .NET 10 或手动进行只读状态测试，请参阅 [ARM64 板端测试指南](docs/arm64-board-test.md)。
 
 Linux only (the official libraries are Linux `.so`/`.a`); aarch64 (the Bumi EDU compute board) and x86_64 are supported.
 The official static library contains **GCC 11 LTO bytecode**, so the native layer must be built with GCC 11
@@ -108,10 +113,11 @@ if (!high.Init()) return;
 high.SubscribeRobotHardwareStatus((in RobotHardwareStatus s) =>
     Console.WriteLine($"workmode={s.WorkMode} soc={s.BmsData.BatterySoc}"));
 
-// The official SDK expects continuous publishing (its example loops at ~100 Hz); send Default when idle.
+// Publishing must be continuous: the vendor examples loop forever (100 Hz Python / 500 Hz C++). Publish the
+// action inside that stream and keep sending Default when idle. Going silent makes the robot ignore the action.
 // Check workmode first; the official docs require the mode-switch flow before actions.
-// 官方 SDK 要求持续发布（示例约 100 Hz）；空闲时发送 Default。
-// 先检查 workmode；官方文档要求执行动作前按流程切换模式。
+// 必须持续发布：官方示例是死循环（Python 约 100 Hz，C++ 约 500 Hz）。把动作放在这个持续的指令流里，
+// 空闲时继续发 Default。中途停止发布会导致机器人忽略动作。先检查 workmode；官方文档要求执行动作前按流程切换模式。
 high.PublishCmd(0, 0, 0, ControlCmd.Swing);
 ```
 
@@ -148,11 +154,11 @@ developing. Callbacks run on SDK threads and must return quickly.
 **状态**
 
 See [docs/verification.md](docs/verification.md) for exactly what has and has not been verified. In short: the native
-layer builds with GCC 11 on x86_64 and the C# ⇄ native path is tested without a robot; **the SDK binding has not been
-run against a physical robot or on aarch64 yet.**
+layer builds with GCC 11 on x86_64; the high native library also builds and its version functions can be called from C#
+on an aarch64 compute board. **Controller initialization and robot status on a physical robot remain unverified.**
 
 具体验证情况请参阅 [docs/verification.md](docs/verification.md)。简而言之：原生层已在 x86_64 上使用 GCC 11
-构建，C# ⇄ 原生调用路径已在无机器人的情况下测试；**SDK 绑定尚未在实体机器人上或 aarch64 架构上运行验证。**
+构建；high 原生库也已在 aarch64 算力板上构建，并可从 C# 调用版本函数。**实体机器人上的控制器初始化和状态读取仍未验证。**
 
 ## License
 

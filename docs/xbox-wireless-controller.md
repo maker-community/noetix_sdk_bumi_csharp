@@ -1,6 +1,6 @@
 # Bumi 算力板 Xbox 无线手柄 / Xbox wireless controller on the Bumi compute board
 
-[中文](#中文) | [English](#english)
+[中文](#中文) | [english](#english)
 
 ## 中文
 
@@ -169,7 +169,7 @@ timeout 30s jstest --event /dev/input/js0
 
 ---
 
-## English
+## english
 
 ### Xbox wireless controller on the Bumi compute board
 

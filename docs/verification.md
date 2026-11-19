@@ -1,8 +1,12 @@
-# Verification status
+# Verification status / 验证状态
+
+[english](#english) | [中文](#中文)
+
+## english
 
 Verified against official SDK 3.1.0 (`noetix_sdk_bumi`, shallow clone, November 2026).
 
-## Verified
+### Verified
 
 | Check | Result |
 | --- | --- |
@@ -14,8 +18,12 @@ Verified against official SDK 3.1.0 (`noetix_sdk_bumi`, shallow clone, November 
 | Every function in the headers has a P/Invoke and a native definition | Unit test |
 | .NET loads both libraries and calls into them on Linux (version, argument validation, error messages, `setenv` of `CYCLONEDDS_URI`) | 7 smoke tests, Linux container |
 | CycloneDDS reads the config passed through `NoetixSdk.SetDdsConfig` | Yes (the parser printed a warning for the file) |
+| High native wrapper builds on the Bumi compute board | Yes, GCC 11.4 / Ubuntu 22.04 / aarch64; official SDK commit `95b264598ed671a76f7959a69c21b1b99f40c0b2` |
+| C# loads the high native wrapper on the compute board | Yes, .NET Runtime 10.0.15 / aarch64; SDK version `3.1.0`, C API version `1` |
+| C# initializes `HighController` and receives live hardware status on a physical Bumi | Yes, two read-only ARM64 [StatusMonitor](arm64-board-test.md) runs on 2026-11-18: 2,330 and 2,324 callbacks in five-second subscription windows; both exited `0` |
+| C# publishes high-level actions that the physical robot executes | Yes, 2026-11-19 on the ARM64 compute board: `Swing` (2 → 8 → 2), `Shake` (2 → 9 → 2) and `Cheer` (2 → 10 → 2) all ran and returned to walking mode by themselves; smallest ankle travel was `Swing` at 0.373 rad, largest joint delta 1.971 rad (`Cheer`); steps, the 21-joint id map and full logs in [motion-test.md](motion-test.md) |
 
-## Observed
+### Observed
 
 - In an isolated loopback-only network namespace (`unshare -Urn`) with the community MuJoCo simulator
   (`bumi_mujoco`), the C# binding receives 21-motor status at 500 Hz **only after** the simulator's status
@@ -34,17 +42,146 @@ Verified against official SDK 3.1.0 (`noetix_sdk_bumi`, shallow clone, November 
 - `HighController.Init()` with no robot reachable does not return (still blocked after 60 s). Call it off the UI thread
   with a timeout.
 - The x86_64 build on Ubuntu 22.04 links `libssl.so.3`, not `libssl1.1` as the official FAQ suggests.
+- The aarch64 C# version probe did not initialize a controller or DDS and did not verify robot status.
+  The subsequent read-only board test did verify live status reception. CycloneDDS warned about deprecated implicit
+  units in the DDS configuration, but both runs received callbacks without changing the configuration or robot services.
+- On 2026-11-19, with the robot hanging on a gantry, the robot reported `workmode` 30 (`失能模式`). One
+  `Swing` followed by `Default` at ~100 Hz — 1,000 `PublishCmd` calls over 12 s — completed without exception and
+  status callbacks continued (6,739 messages), but no joint moved more than 0.02 rad and `workmode` stayed 30.
+  Preset actions are therefore not executed while the robot is disabled. Enabling it (`START` from `workmode` 30)
+  was not sent, so motion execution on hardware remains unverified.
+- On 2026-11-19 (later session) the robot reported `workmode` 2 (`走路模式`). A `Switch> Swing` sequence plus
+  `Default` at ~100 Hz (1,166 `PublishCmd` calls over 20 s) also changed nothing: `workmode` stayed 2 the whole time
+  and no joint moved more than 0.02 rad, while 10,503 status messages arrived normally. The command path therefore
+  publishes without error, but this setup's motion controller does not act on those commands; the cause has not been
+  identified. `Switch` alone did not leave walking mode, so the missing piece is not a "requires ready mode" precondition.
+- **Root cause of those two failures: the sample stopped publishing.** `MotionTest` sent each action and then went
+  silent for up to 6 s while it waited for the mode to change. The vendor examples never stop publishing. After
+  changing the sample to stream `PublishCmd` continuously (2 ms period, `Default` when idle, action samples inside the
+  stream), preset actions execute on the physical robot.
+- On 2026-11-19 (C# SDK, ARM64 compute board, `MotionTest ... Switch>Swing 12 500`): the robot started in `workmode` 2,
+  `Switch` left it at 2, then `Swing` moved `workmode` 2 → 8 (`出厂预设动作 打招呼`) and all 21 joints moved, the arm
+  most (motor 11 by 1.712 rad, 13 by 1.535, 10 by 0.927, 12 by 0.488), with 2 action commands and 2,975 `Default`
+  commands published and 6,068 status messages received. **High-level motion control from the C# binding is verified
+  on hardware**, including the 挥手 preset action. Command steps, expected output and the remaining test plan are in
+  [motion-test.md](motion-test.md).
+- On 2026-11-19 (same setup, `MotionTest ... Cheer 12 500`): `Cheer` (`出厂预设动作 欢呼`) ran `workmode` 2 → 10 → 2
+  and moved all 21 joints, the largest by 1.971 rad, with 1 action command, 2,987 `Default` commands and 6,067 status
+  messages. The preset finished and returned to walking mode inside the same 12 s window, which shows preset actions
+  exit on their own once complete.
+- On 2026-11-19 (same setup, `MotionTest ... Shake 12 500`): `Shake` (`出厂预设动作 握手`) ran `workmode` 2 → 9 → 2;
+  the largest arm delta was 1.392 rad (`arm_l3`) and the largest leg delta 0.945 rad (`leg_l1`).
+- With the official 21-joint id map (0–3 left arm, 4–9 left leg, 10–13 right arm, 14–19 right leg, 20 waist) the
+  sample now reports the largest deviation per region. Across the three presets the ankle travel was `Swing` 0.373 rad,
+  `Shake` 0.591 rad and `Cheer` ≤0.621 rad, so **`Swing` is the preset that moves the legs least**. None of them is
+  arm-only: the black-box balance controller always involves the legs (hip/knee ≈ 0.9 rad).
+- On the same runs, 13 of 21 motors reported `error=1`. The official fault table lists `02H`–`0EH` only, so `1` is not
+  a documented fault code; its meaning is still unknown. `mean|tau|` was 0.81–0.98 N·m.
 - Separately from the SDK, a community Xbox receiver driver was built and tested for Linux input on one Bumi compute
   board. See [xbox-wireless-controller.md](xbox-wireless-controller.md) for the environment and limits.
 
-## Not verified
+### Not verified
 
-- SDK binding behavior on a physical Bumi, including: `Init()` against a real motion controller, status callbacks, `PublishCmd`,
-  audio/video streams, and what the `format` field of `AudioStream` means beyond the official example (`2`).
-- aarch64 (the Jetson compute board) builds and runtime.
+- Executing the remaining `PublishCmd` actions (dances, teach/playback, `FALLTOSTAND`/`STANDTOFALL`) on a physical
+  robot, and walking under `WALK` velocity commands on the ground. Audio/video streams, and what the `format` field of
+  `AudioStream` means beyond the official example (`2`), are also unverified.
+- The meaning of `MotorState.error == 1`, seen on 13 of 21 motors while the robot was suspended.
+- aarch64 low native wrapper build and controller runtime behavior.
 - Behaviour when the application stops sending commands (does the robot stop by itself?).
 - Callback threading limits (the callbacks are invoked on SDK threads; this binding copies/forwards but does not
   throttle them).
 - Redistribution of the built native libraries (they embed the official BSD-3-Clause static library).
 - LowController at runtime. It is exposed for parity with the official SDK; a managed runtime is not suited to
   hard-real-time loops.
+
+## 中文
+
+对照官方 SDK 3.1.0 验证（`noetix_sdk_bumi`，浅克隆，2026 年 11 月）。
+
+### 已验证
+
+| 检查项 | 结果 |
+| --- | --- |
+| 原生封装可针对官方 `libnoetix_sdk.a` + CycloneDDS 编译并链接 | 是，GCC 11.4 / Ubuntu 22.04 / x86_64，无警告 |
+| 导出符号 | `libnoetix_bumi_c.so`：51 个 `noetix_*` 函数；`libnoetix_bumi_low_c.so`：7 个 |
+| 同一封装使用 GCC 15 | **失败**：官方静态库中包含 GCC 11 LTO 字节码 |
+| 将 High 和 Low 放进同一个库 | **失败**：两者都定义了 `noetix::robot_hardware_status_callback`；因此分成两个库 |
+| 结构体大小/偏移、枚举值（C 头文件 ⇄ C# ⇄ 官方 `common.h`） | 单元测试 |
+| 头文件中的每个函数都有 P/Invoke 和原生定义 | 单元测试 |
+| .NET 在 Linux 上加载两个库并调用它们（版本、参数校验、错误消息、`CYCLONEDDS_URI` 的 `setenv`） | 7 个冒烟测试，Linux 容器 |
+| CycloneDDS 能读取通过 `NoetixSdk.SetDdsConfig` 传入的配置 | 是（解析器针对该文件打印了一条警告） |
+| High 原生封装可在 Bumi 算力板上构建 | 是，GCC 11.4 / Ubuntu 22.04 / aarch64；官方 SDK 提交 `95b264598ed671a76f7959a69c21b1b99f40c0b2` |
+| C# 可在算力板上加载 High 原生封装 | 是，.NET Runtime 10.0.15 / aarch64；SDK 版本 `3.1.0`，C API 版本 `1` |
+| C# 可在实体 Bumi 上初始化 `HighController` 并接收实时硬件状态 | 是，2026-11-18 在 ARM64 上进行了两次只读 [StatusMonitor](arm64-board-test.md) 运行：在五秒订阅窗口内分别收到 2,330 和 2,324 次回调；两次都以 `0` 退出 |
+| C# 发布的高层动作可由实体机器人执行 | 是，2026-11-19 在 ARM64 算力板上：`Swing`（2 → 8 → 2）、`Shake`（2 → 9 → 2）和 `Cheer`（2 → 10 → 2）都执行了，并自行回到走路模式；最小踝关节位移为 `Swing` 的 0.373 rad，最大关节变化量为 1.971 rad（`Cheer`）；步骤、21 关节 id 映射和完整日志见 [motion-test.md](motion-test.md) |
+
+### 观察到
+
+- 在仅回环的隔离网络命名空间（`unshare -Urn`）中，配合社区 MuJoCo 仿真器
+  （`bumi_mujoco`），C# 绑定能接收到 500 Hz 的 21 电机状态，但**仅在**仿真器的状态
+  写入端声明了 2 ms 的 DDS deadline 之后。使用未修改的写入端时，官方 SDK 的读取端（C++ 和 C#）
+  收到零个样本，而一个纯 Python 读取端仍然可用。
+- HighController 的命令通路已在仿真器上验证：先 `Switch` 再 `Walk` 使 `workmode` 从
+  1 → 2。更早的跟随距离结果是依据指令运动而非 MuJoCo 位姿计算的，
+  并且显示的目标有独立的时间线。**这些结果不能验证跟随或间隙。**
+  修订后的跟随原型仅在离线运行，使用来自实际仿真位姿的合成观测；
+  它不测试 SDK 命令通路，也不代表相机感知或真实世界安全性。
+- 在一次 15 秒的 x86_64 MuJoCo 脚本化接近/丢失场景中，修订后的原型测得机体到标记的最小
+  中心距离为 1.816 m，在 100 帧模拟丢失期间输出零条命令，并在丢失期间
+  使机体移动了 0.008 m。该标记没有碰撞体；这些结果不是碰撞
+  测试，也不是安全距离。无头运行成功退出；WSLg 查看器完成了仿真，
+  但在关闭时因原生内存错误而终止。
+- 在没有可达机器人时，`HighController.Init()` 不会返回（60 秒后仍阻塞）。请在 UI 线程之外
+  调用并设置超时。
+- Ubuntu 22.04 上的 x86_64 构建链接的是 `libssl.so.3`，而不是官方 FAQ 所说的 `libssl1.1`。
+- aarch64 上的 C# 版本探测没有初始化控制器或 DDS，也没有验证机器人状态。
+  随后的只读算力板测试确实验证了实时状态接收。CycloneDDS 警告 DDS 配置中存在已弃用的隐式
+  单位，但两次运行都在不更改配置或机器人服务的情况下收到了回调。
+- 2026-11-19，机器人吊在吊架上时报告 `workmode` 30（`失能模式`）。先执行一次
+  `Swing`，再以约 100 Hz 发布 `Default` —— 12 秒内共 1,000 次 `PublishCmd` 调用 —— 完成且无异常，
+  状态回调持续（6,739 条消息），但没有任何关节移动超过 0.02 rad，`workmode` 保持 30。
+  因此机器人处于失能状态时不会执行预设动作。未发送使其启用的命令（从 `workmode` 30 发送 `START`），
+  所以硬件上的运动执行仍未验证。
+- 2026-11-19（稍后的会话）机器人报告 `workmode` 2（`走路模式`）。`Switch> Swing` 序列加上
+  约 100 Hz 的 `Default`（20 秒内共 1,166 次 `PublishCmd` 调用）同样没有产生任何变化：`workmode` 全程保持 2，
+  没有任何关节移动超过 0.02 rad，同时正常收到 10,503 条状态消息。因此命令通路
+  发布时没有错误，但该设置的运控器并不响应这些命令；原因尚未
+  查明。仅执行 `Switch` 也没有离开走路模式，因此缺失的环节不是“需要就绪模式”这一前提条件。
+- **这两次失败的根因：示例停止了发布。** `MotionTest` 每发送一个动作后就静默
+  长达 6 秒，等待模式改变。厂商示例从不停止发布。把示例改为
+  持续以流的形式发送 `PublishCmd`（周期 2 ms，空闲时发送 `Default`，动作样本混在
+  流中）之后，预设动作便在实体机器人上执行了。
+- 2026-11-19（C# SDK，ARM64 算力板，`MotionTest ... Switch>Swing 12 500`）：机器人以 `workmode` 2 启动，
+  `Switch` 之后仍为 2，随后 `Swing` 使 `workmode` 2 → 8（`出厂预设动作 打招呼`），全部 21 个关节都移动了，其中手臂
+  最多（电机 11 移动 1.712 rad，13 移动 1.535，10 移动 0.927，12 移动 0.488），共发布 2 条动作命令和 2,975 条
+  `Default` 命令，收到 6,068 条状态消息。**C# 绑定的高层运动控制已在硬件上验证**，
+  包括挥手预设动作。命令步骤、预期输出和剩余测试计划见
+  [motion-test.md](motion-test.md)。
+- 2026-11-19（相同设置，`MotionTest ... Cheer 12 500`）：`Cheer`（`出厂预设动作 欢呼`）使 `workmode` 2 → 10 → 2，
+  并移动了全部 21 个关节，最大者移动 1.971 rad，共 1 条动作命令、2,987 条 `Default` 命令和 6,067 条状态
+  消息。该预设在同一个 12 秒窗口内完成并回到走路模式，这说明预设动作
+  完成后会自行退出。
+- 2026-11-19（相同设置，`MotionTest ... Shake 12 500`）：`Shake`（`出厂预设动作 握手`）使 `workmode` 2 → 9 → 2；
+  手臂最大变化量为 1.392 rad（`arm_l3`），腿部最大变化量为 0.945 rad（`leg_l1`）。
+- 使用官方 21 关节 id 映射（0–3 左臂，4–9 左腿，10–13 右臂，14–19 右腿，20 腰部）时，
+  示例现在会报告每个区域的最大偏差。在三个预设中，踝关节位移分别为 `Swing` 0.373 rad、
+  `Shake` 0.591 rad 和 `Cheer` ≤0.621 rad，因此**`Swing` 是腿部移动最少的预设**。它们都不是
+  纯手臂动作：黑盒平衡控制器总会涉及腿部（髋/膝约 0.9 rad）。
+- 在同批运行中，21 个电机里有 13 个报告 `error=1`。官方故障表只列出 `02H`–`0EH`，因此 `1` 不是
+  有文档记录的故障码；其含义仍然未知。`mean|tau|` 为 0.81–0.98 N·m。
+- 与 SDK 无关，另有一个社区 Xbox 接收器驱动在某一台 Bumi 算力板上完成了 Linux 输入的构建与
+  测试。环境与限制见 [xbox-wireless-controller.md](xbox-wireless-controller.md)。
+
+### 未验证
+
+- 在实体机器人上执行其余 `PublishCmd` 动作（舞蹈、示教/复现、`FALLTOSTAND`/`STANDTOFALL`），
+  以及在地面上按 `WALK` 速度命令行走。音频/视频流，以及 `AudioStream` 的 `format` 字段
+  在官方示例（`2`）之外的含义，也都未验证。
+- `MotorState.error == 1` 的含义，该值在机器人悬吊时于 21 个电机中的 13 个上出现。
+- aarch64 上 low 原生封装的构建以及控制器的运行时行为。
+- 应用程序停止发送命令时的行为（机器人会自行停止吗？）。
+- 回调线程方面的限制（回调在 SDK 线程上调用；本绑定只做复制/转发，不做
+  限流）。
+- 构建出的原生库的再分发（它们内嵌了官方 BSD-3-Clause 静态库）。
+- 运行时的 LowController。它为与官方 SDK 保持对等而暴露；托管运行时不适合
+  硬实时循环。
