@@ -17,11 +17,26 @@ MediaTest [path-to-dds.xml] [status|record|play|video|all] [seconds] [output-dir
 | `record` | Same as `status`, focused on saving the microphone audio as a WAV |
 | `play` | Publishes a 1 s 440 Hz tone to the playback topic, then reports what came back |
 | `playfile <wav>` | Publishes a 16-bit PCM WAV to the robot speaker in 20 ms frames, paced in real time |
+| `playstdin [rate] [channels]` | Reads raw 16-bit PCM from stdin and publishes it, so a decoder can stream straight to the robot |
 | `video` | Same as `status`, focused on camera frames |
 | `all` | Collects status + audio + video, then plays the tone |
 | `volume [n]` | Prints the current volume (0–200); sets it when `n` is given |
 
-The module does **not** decode compressed audio, so convert first on a machine that has ffmpeg:
+The module does **not** decode compressed audio, so decode on the board and pipe it in. `libmpg123` is already
+installed on the Bumi compute board (that is what the GStreamer `mpg123audiodec` plugin uses), so an mp3 never has to be
+converted on the PC:
+
+```bash
+# with the mpg123 CLI (apt-get install mpg123 — needs root)
+mpg123 -q -s -r 16000 -m music.mp3 | dotnet MediaTest.dll dds.xml playstdin 16000 1
+
+# without installing anything, using the GStreamer build that ships with the board
+gst-launch-1.0 -q filesrc location=music.mp3 ! decodebin ! audioconvert ! audioresample \
+  ! audio/x-raw,format=S16LE,rate=16000,channels=1 ! fdsink fd=1 \
+  | dotnet MediaTest.dll dds.xml playstdin 16000 1
+```
+
+Or convert once with ffmpeg on a PC and use `playfile`:
 
 ```bash
 ffmpeg -i input.mp3 -ac 1 -ar 16000 -c:a pcm_s16le input-16k-mono.wav
@@ -79,11 +94,25 @@ MediaTest [dds.xml 路径] [status|record|play|video|all] [秒数] [输出目录
 | `record` | 与 `status` 相同，重点是保存麦克风音频为 WAV |
 | `play` | 向播放话题发 1 s 440 Hz 音调，然后报告回传结果 |
 | `playfile <wav>` | 把 16 bit PCM WAV 按 20 ms 帧、按实时节奏发给扬声器 |
+| `playstdin [采样率] [声道]` | 从标准输入读原始 16 bit PCM 并发布，方便解码器直接流式送入 |
 | `video` | 与 `status` 相同，重点是摄像头帧 |
 | `all` | 采集状态 + 音频 + 视频，然后播放音调 |
 | `volume [n]` | 打印当前音量（0–200）；给了 `n` 就设置 |
 
-语音模块**不会解码压缩音频**，所以先在装有 ffmpeg 的机器上转换：
+语音模块**不会解码压缩音频**，所以在板子上解码后直接喂进来即可。Bumi 算力板上**已经装了 `libmpg123`**
+（GStreamer 的 `mpg123audiodec` 插件就是用它），因此 mp3 完全不用先在 PC 上转换：
+
+```bash
+# 有 mpg123 命令行时（apt-get install mpg123 —— 需要 root）
+mpg123 -q -s -r 16000 -m music.mp3 | dotnet MediaTest.dll dds.xml playstdin 16000 1
+
+# 不装任何东西，用板子自带的 GStreamer
+gst-launch-1.0 -q filesrc location=music.mp3 ! decodebin ! audioconvert ! audioresample \
+  ! audio/x-raw,format=S16LE,rate=16000,channels=1 ! fdsink fd=1 \
+  | dotnet MediaTest.dll dds.xml playstdin 16000 1
+```
+
+也可以先在 PC 上用 ffmpeg 转好，再用 `playfile`：
 
 ```bash
 ffmpeg -i input.mp3 -ac 1 -ar 16000 -c:a pcm_s16le input-16k-mono.wav

@@ -2,11 +2,11 @@ using System.Diagnostics;
 using Noetix.Sdk.Bumi;
 
 // Media path check: microphone capture, speaker playback and camera frames through MediaController.
-// Nothing here moves the robot; it only subscribes to media topics and publishes a tone.
-// Usage: MediaTest [path-to-dds.xml] [status|record|play|video|all] [seconds] [output-dir]
+// Nothing here moves the robot; it only subscribes to media topics and publishes PCM or a tone.
+// Usage: MediaTest [path-to-dds.xml] [status|record|play|playfile|playstdin|video|all|volume] [args] [output-dir]
 var ddsConfig = args.Length > 0 ? args[0] : Path.Combine("config", "dds.xml");
 var command = args.Length > 1 ? args[1].ToLowerInvariant() : "status";
-var known = new[] { "status", "record", "play", "playfile", "video", "all", "volume" };
+var known = new[] { "status", "record", "play", "playfile", "playstdin", "video", "all", "volume" };
 if (!known.Contains(command))
 {
     Console.Error.WriteLine($"Unknown command '{command}'. Known: {string.Join(", ", known)}");
@@ -27,6 +27,11 @@ if (command == "playfile")
     }
 
     outDir = args.Length > 3 ? args[3] : "media-out";
+}
+else if (command == "playstdin")
+{
+    // args[2] is the sample rate and args[3] the channel count.
+    outDir = args.Length > 4 ? args[4] : "media-out";
 }
 else
 {
@@ -180,9 +185,30 @@ Console.WriteLine(command switch
     "record" => $"Recording {seconds}s of internal microphone audio into '{outDir}'.",
     "play" => "Publishing a 1s 440 Hz tone to the robot speaker.",
     "playfile" => $"Playing '{inputFile}' on the robot speaker.",
+    "playstdin" => "Playing raw 16-bit PCM from stdin on the robot speaker.",
     "video" => $"Subscribing to camera frames for {seconds}s.",
     _ => $"Collecting status, microphone audio and camera frames for {seconds}s, then playing a tone.",
 });
+
+if (command == "playstdin")
+{
+    // Decode on the board and stream it in:
+    //   mpg123 -q -s -r 16000 -m file.mp3 | MediaTest <dds.xml> playstdin 16000 1
+    var stdinRate = args.Length > 2 && int.TryParse(args[2], out var parsedRate) ? parsedRate : 16000;
+    var stdinChannels = args.Length > 3 && int.TryParse(args[3], out var parsedChannels) ? parsedChannels : 1;
+    Console.WriteLine($"Reading raw 16-bit PCM from stdin: {stdinRate} Hz, {stdinChannels} ch.");
+
+    if (volumeBefore < 100)
+    {
+        media.SetVolume(100);
+        volumeChanged = true;
+        Console.WriteLine($"Volume {volumeBefore} -> 100 for the test (restored afterwards).");
+    }
+
+    var frames = PublishStream(media, Console.OpenStandardInput(), stdinRate, stdinChannels, 2);
+    Console.WriteLine($"Published {frames} audio frames.");
+    seconds = 1;
+}
 
 if (command == "playfile")
 {
@@ -351,6 +377,61 @@ static int PublishPcm(MediaController controller, short[] pcm, int sampleRate, i
         if (wait > TimeSpan.Zero)
         {
             Thread.Sleep(wait);
+        }
+    }
+
+    return frames;
+}
+
+// Reads raw 16-bit PCM from a stream and publishes it in 20 ms frames, paced in real time.
+static int PublishStream(MediaController controller, Stream input, int sampleRate, int channels, uint format)
+{
+    const int FrameMs = 20;
+    var bytesPerFrame = sampleRate / 1000 * FrameMs * channels * 2;
+    var buffer = new byte[bytesPerFrame];
+    var clock = Stopwatch.StartNew();
+    var frames = 0;
+    while (true)
+    {
+        var read = 0;
+        while (read < bytesPerFrame)
+        {
+            var n = input.Read(buffer, read, bytesPerFrame - read);
+            if (n <= 0)
+            {
+                break;
+            }
+
+            read += n;
+        }
+
+        if (read == 0)
+        {
+            break;
+        }
+
+        var samples = new short[(read + 1) / 2];
+        Buffer.BlockCopy(buffer, 0, samples, 0, read - (read % 2));
+        PublishFrame(
+            controller, samples, (ulong)frames + 1, (ulong)(frames * FrameMs * 1000),
+            (uint)channels, (uint)sampleRate, format, FrameMs);
+        frames++;
+
+        if (frames % 250 == 0)
+        {
+            Console.WriteLine($"  ... {(frames * FrameMs / 1000.0):F0}s published");
+        }
+
+        var target = TimeSpan.FromMilliseconds(frames * (double)FrameMs);
+        var wait = target - clock.Elapsed;
+        if (wait > TimeSpan.Zero)
+        {
+            Thread.Sleep(wait);
+        }
+
+        if (read < bytesPerFrame)
+        {
+            break;
         }
     }
 
