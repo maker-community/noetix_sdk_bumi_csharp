@@ -24,6 +24,7 @@ MediaTest [path-to-dds.xml] [status|record|play|video|all] [seconds] [output-dir
 | `volume [n]` | Prints the current volume (0–200); sets it when `n` is given |
 | `config` | Prints every media switch, the timeout and the current wake words |
 | `system <wakeup\|sleep\|reset>` | Sends a system control command to the voice module |
+| `wakewords [get\|add <text>\|reset]` | Reads, appends or resets the wake words |
 
 The module does **not** decode compressed audio, so decode on the board and pipe it in. `libmpg123` is already
 installed on the Bumi compute board (that is what the GStreamer `mpg123audiodec` plugin uses), so an mp3 never has to be
@@ -119,7 +120,21 @@ done by re-pointing the data flow instead:
 
 `MediaTest ... config` prints every switch plus the current wake words, so the state can be checked before changing it.
 
-> **Safety:** the factory wake-word list contains 停止运动 ("stop moving"). Whether that still works after the agent
+'### Wake words
+
+`AddWakeupWords` only accepts the format the module validates with a regular expression:
+
+```
+[pinyin with tone marks, space separated] @[display name]     e.g.  n ǐ h ǎo @你好
+```
+
+Measured on 2026-11-19: `n ǐ h ǎo @你好` returned **true** and grew the list 17 → 18, while `hello` returned
+**false**. There is **no API to remove a single wake word** — only `ResetWakeupWords`, which restores the factory
+list (17 entries, including 布米 and 停止运动). Passing the regex does not prove the offline keyword model can
+actually recognise the word; that needs a listening test. `GetWakeupWords` is also stale inside the process that
+changed it, so read it from a fresh process.
+
+> **Safety:** the factory wake-word list contains 停止运动 ("stop moving").' Whether that still works after the agent
 > input is disabled has **not** been verified here. Check it before relying on it, or keep the existing wake words.
 
 ## Safety
@@ -148,6 +163,7 @@ MediaTest [dds.xml 路径] [status|record|play|video|all] [秒数] [输出目录
 | `volume [n]` | 打印当前音量（0–200）；给了 `n` 就设置 |
 | `config` | 打印所有媒体开关、超时时间和当前唤醒词 |
 | `system <wakeup\|sleep\|reset>` | 向语音模块发送系统控制指令 |
+| `wakewords [get\|add <text>\|reset]` | 读取、追加或恢复唤醒词 |
 
 语音模块**不会解码压缩音频**，所以在板子上解码后直接喂进来即可。Bumi 算力板上**已经装了 `libmpg123`**
 （GStreamer 的 `mpg123audiodec` 插件就是用它），因此 mp3 完全不用先在 PC 上转换：

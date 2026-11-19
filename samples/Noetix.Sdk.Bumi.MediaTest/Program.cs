@@ -6,7 +6,7 @@ using Noetix.Sdk.Bumi;
 // Usage: MediaTest [path-to-dds.xml] [status|record|play|playfile|playstdin|video|all|volume] [args] [output-dir]
 var ddsConfig = args.Length > 0 ? args[0] : Path.Combine("config", "dds.xml");
 var command = args.Length > 1 ? args[1].ToLowerInvariant() : "status";
-var known = new[] { "status", "config", "system", "record", "play", "playfile", "playstdin", "loopback", "video", "all", "volume" };
+var known = new[] { "status", "config", "system", "wakewords", "record", "play", "playfile", "playstdin", "loopback", "video", "all", "volume" };
 if (!known.Contains(command))
 {
     Console.Error.WriteLine($"Unknown command '{command}'. Known: {string.Join(", ", known)}");
@@ -72,6 +72,53 @@ if (command == "config")
     Console.WriteLine($"  {"WakeupResponseWords",-52} '{SafeRead(media.GetWakeupResponseWords)}'");
     Console.WriteLine($"  {"SleepResponseWords",-52} '{SafeRead(media.GetSleepResponseWords)}'");
     return 0;
+}
+
+if (command == "wakewords")
+{
+    var sub = args.Length > 2 ? args[2].ToLowerInvariant() : "get";
+    void Dump()
+    {
+        var words = media.GetWakeupWords();
+        var lines = words.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        Console.WriteLine($"Wake words: {lines.Length}");
+        foreach (var line in lines.Take(4))
+        {
+            Console.WriteLine($"  {line}");
+        }
+
+        if (lines.Length > 4)
+        {
+            Console.WriteLine($"  ... ({lines.Length - 4} more)");
+        }
+    }
+
+    switch (sub)
+    {
+        case "get":
+            Dump();
+            return 0;
+        case "add":
+            var text = args.Length > 3 ? args[3] : null;
+            if (string.IsNullOrEmpty(text))
+            {
+                Console.Error.WriteLine("Usage: MediaTest <dds.xml> wakewords add \"<pinyin with tones> @中文\"");
+                return 64;
+            }
+
+            var added = media.AddWakeupWords(text);
+            Console.WriteLine($"AddWakeupWords(\"{text}\") -> {added}");
+            Dump();
+            return added ? 0 : 5;
+        case "reset":
+            media.ResetWakeupWords();
+            Console.WriteLine("ResetWakeupWords() sent; the factory list is restored.");
+            Dump();
+            return 0;
+        default:
+            Console.Error.WriteLine("Usage: MediaTest <dds.xml> wakewords <get|add <text>|reset>");
+            return 64;
+    }
 }
 
 if (command == "system")
