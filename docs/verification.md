@@ -89,6 +89,12 @@ Verified against official SDK 3.1.0 (`noetix_sdk_bumi`, shallow clone, November 
   (50 frames back) and the microphones peaked at 12,795 during playback versus 179 while idle, so the speaker really
   produced sound. `GetVolume()` was 1 of the 0–200 range, so the test raised it to 100 and restored it afterwards.
 - The voice system reported `Sleeped` (`CmdSleeped`) while idle; external playback still worked.
+- Playback quality: the playback topic is specified as **2 channels**, so sending mono (which we did first) is wrong; and
+  the robot speaker breaks up on low frequencies. Mono plus unfiltered music was clearly noisy, stereo helped, and
+  **stereo + 250 Hz high-pass + -6 dB was clean** in a listening test. Frame size (20 ms vs 100 ms) made no difference,
+  so per-frame publishing jitter is not a factor.
+- Microphone gain at 1-2 m is low: speech peaked around **650 of 32768** (≈ -34 dBFS) while ambient noise sat at ~95,
+  so a straight record-and-play loopback is faint and its noise floor is audible; about +20 dB of gain is needed.
 - Separately from the SDK, a community Xbox receiver driver was built and tested for Linux input on one Bumi compute
   board. See [xbox-wireless-controller.md](xbox-wireless-controller.md) for the environment and limits.
 
@@ -194,6 +200,11 @@ Verified against official SDK 3.1.0 (`noetix_sdk_bumi`, shallow clone, November 
   50 帧，且播放期间麦克风峰值从空闲时的 179 升到 12,795，说明扬声器确实出声。`GetVolume()` 为 0–200 中的 1，
   因此测试时临时调到 100，结束后已恢复。
 - 机器人空闲时语音系统上报 `Sleeped`（`CmdSleeped`），外部播放仍然有效。
+- 播放音质：播放话题规定是 **2 声道**，所以最初发单声道是错的；另外机身喇叭对低频支撑不住。
+  单声道 + 未滤波音乐明显有杂音，改立体声有改善，**立体声 + 250 Hz 高通 + -6 dB 后听感干净**。
+  帧长（20 ms 与 100 ms）没有差别，说明逐帧发布抖动不是原因。
+- 麦克风在 1–2 米处的增益偏低：说话峰值约 **650 / 32768**（≈ -34 dBFS），环境底噪约 95，
+  因此直接"录了再放"声音很轻且能听到底噪，需要约 +20 dB 增益。
 - 与 SDK 无关，另有一个社区 Xbox 接收器驱动在某一台 Bumi 算力板上完成了 Linux 输入的构建与
   测试。环境与限制见 [xbox-wireless-controller.md](xbox-wireless-controller.md)。
 

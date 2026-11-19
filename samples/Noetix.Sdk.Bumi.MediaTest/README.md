@@ -16,9 +16,10 @@ MediaTest [path-to-dds.xml] [status|record|play|video|all] [seconds] [output-dir
 | `status` | Subscribes to system status/errors, microphone audio and both video topics; prints a summary |
 | `record` | Same as `status`, focused on saving the microphone audio as a WAV |
 | `play` | Publishes a 1 s 440 Hz tone to the playback topic, then reports what came back |
-| `playfile <wav>` | Publishes a 16-bit PCM WAV to the robot speaker in 20 ms frames, paced in real time |
-| `playstdin [rate] [channels]` | Reads raw 16-bit PCM from stdin and publishes it, so a decoder can stream straight to the robot |
+| `playfile <wav> [frame-ms]` | Publishes a 16-bit PCM WAV to the robot speaker in fixed-size frames (default 20 ms), paced in real time |
+| `playstdin [rate] [channels] [frame-ms]` | Reads raw 16-bit PCM from stdin and publishes it, so a decoder can stream straight to the robot |
 | `video` | Same as `status`, focused on camera frames |
+| `loopback <seconds>` | Records the microphone, downmixes the four head mics to stereo, then plays it back |
 | `all` | Collects status + audio + video, then plays the tone |
 | `volume [n]` | Prints the current volume (0–200); sets it when `n` is given |
 
@@ -42,6 +43,22 @@ Or convert once with ffmpeg on a PC and use `playfile`:
 ffmpeg -i input.mp3 -ac 1 -ar 16000 -c:a pcm_s16le input-16k-mono.wav
 ```
 
+### Recommended playback chain
+
+The speaker breaks up on low frequencies, so filter and leave headroom. With `sox` on the board:
+
+```bash
+# decode to stereo wav, then high-pass and cut 6 dB
+gst-launch-1.0 -q filesrc location=music.mp3 ! decodebin ! audioconvert ! audioresample \
+  ! audio/x-raw,format=S16LE,rate=16000,channels=2 ! wavenc ! filesink location=music.wav
+sox music.wav music-hp.wav highpass 250 gain -6
+
+dotnet MediaTest.dll dds.xml playfile music-hp.wav media-out 100   # 100 ms frames
+```
+
+Measured on 2026-11-19: mono and unfiltered music were clearly noisy; stereo alone helped, and adding the 250 Hz
+high-pass plus -6 dB removed the noise entirely. Frame size (20 ms vs 100 ms) changed nothing.
+
 Recorded audio is written as 16-bit PCM WAV and the first video frame of each stream is written next to it, so you can
 inspect both outside the SDK.
 
@@ -62,10 +79,10 @@ stream already has faces blurred, which is what 脱敏 means.
 
 ## Caveats
 
-- **Music playback sounded noisy on the robot speaker** (reported 2026-11-19, 16 kHz mono, volume 100/200): the
-  cause is not identified. Candidates are per-frame publish jitter (20 ms frames sent one at a time over DDS),
-  the speaker itself, and the level. A 440 Hz tone at 20 % amplitude was clean enough for the microphones to pick up,
-  so the pipeline works; the quality does not match a local player. Not investigated further.
+- **Playback noise had two causes, both now understood.** Sending **mono** is wrong — the playback topic is specified
+  as 2 channels — and low-frequency music makes the small speaker break up. With stereo, a 250 Hz high-pass and about
+  -6 dB of headroom the same music is clean on the robot. Frame size (20 ms vs 100 ms) made no measurable difference,
+  so per-frame publishing jitter is not a factor. Playback tests should use the chain below.
 - `SubscribeInternalVideoCapture` stays empty on EDU models with a compute board. The official flow is to publish an
   external video stream first; `noetix-video-capture.service` is already doing that, which is why the **de-sensed**
   stream works.
@@ -93,9 +110,10 @@ MediaTest [dds.xml 路径] [status|record|play|video|all] [秒数] [输出目录
 | `status` | 订阅系统状态/错误、麦克风音频和两路视频，打印汇总 |
 | `record` | 与 `status` 相同，重点是保存麦克风音频为 WAV |
 | `play` | 向播放话题发 1 s 440 Hz 音调，然后报告回传结果 |
-| `playfile <wav>` | 把 16 bit PCM WAV 按 20 ms 帧、按实时节奏发给扬声器 |
-| `playstdin [采样率] [声道]` | 从标准输入读原始 16 bit PCM 并发布，方便解码器直接流式送入 |
+| `playfile <wav> [帧长ms]` | 把 16 bit PCM WAV 按固定帧长（默认 20 ms）、按实时节奏发给扬声器 |
+| `playstdin [采样率] [声道] [帧长ms]` | 从标准输入读原始 16 bit PCM 并发布，方便解码器直接流式送入 |
 | `video` | 与 `status` 相同，重点是摄像头帧 |
+| `loopback <秒数>` | 录一段麦克风，把 4 个头顶麦混成立体声后回放 |
 | `all` | 采集状态 + 音频 + 视频，然后播放音调 |
 | `volume [n]` | 打印当前音量（0–200）；给了 `n` 就设置 |
 
@@ -118,6 +136,22 @@ gst-launch-1.0 -q filesrc location=music.mp3 ! decodebin ! audioconvert ! audior
 ffmpeg -i input.mp3 -ac 1 -ar 16000 -c:a pcm_s16le input-16k-mono.wav
 ```
 
+### 推荐的播放链路
+
+机身喇叭对低频支撑不住，必须滤掉并留余量。板子上有 `sox`：
+
+```bash
+# 先解码成立体声 wav，再高通并降 6 dB
+gst-launch-1.0 -q filesrc location=music.mp3 ! decodebin ! audioconvert ! audioresample \
+  ! audio/x-raw,format=S16LE,rate=16000,channels=2 ! wavenc ! filesink location=music.wav
+sox music.wav music-hp.wav highpass 250 gain -6
+
+dotnet MediaTest.dll dds.xml playfile music-hp.wav media-out 100   # 100 ms 帧
+```
+
+2026-11-19 实测：单声道和未滤波的音乐明显有杂音；仅改立体声有改善，再加 250 Hz 高通和 -6 dB 后完全干净。
+帧长（20 ms 与 100 ms）没有任何差别。
+
 录音以 16 bit PCM WAV 保存，两路视频各自的第一帧也写在同一目录，方便在 SDK 之外检查。
 
 ## 实测结果（Bumi EDU 算力板，2026-11-19）
@@ -136,9 +170,9 @@ ffmpeg -i input.mp3 -ac 1 -ar 16000 -c:a pcm_s16le input-16k-mono.wav
 
 ## 注意事项
 
-- **机器人扬声器播放音乐时杂音较重**（2026-11-19 反馈，16 kHz 单声道，音量 100/200）：原因未查明。
-  可能的方向是逐帧发布抖动（20 ms 帧逐条经 DDS 发送）、扬声器本身、以及电平。20% 幅度的 440 Hz 音调
-  能被麦克风清晰拾取，说明通路是通的，但音质达不到本地播放器的水平。未进一步排查。
+- **播放杂音有两个原因，现在都清楚了。** 一是发送**单声道**——播放话题规定是 **2 声道**；二是音乐的低频让机身小喇叭破音。
+  改用立体声，并加 250 Hz 高通和约 -6 dB 余量后，同一首音乐在机器人上是干净的。帧长（20 ms 与 100 ms）
+  实测没有差别，所以逐帧发布抖动不是原因。播放测试请用下面的链路。
 - 带算力板的 EDU 机型上 `SubscribeInternalVideoCapture` 始终为空。官方流程是先发布外部视频流；
   `noetix-video-capture.service` 已经在做这件事，所以**脱敏**流可用。
 - 播放走的是机器人的语音模块，与本地 `/dev/snd` 无关。算力板自己的模拟输入录出来是纯静音——

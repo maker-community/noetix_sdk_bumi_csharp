@@ -6,7 +6,7 @@ using Noetix.Sdk.Bumi;
 // Usage: MediaTest [path-to-dds.xml] [status|record|play|playfile|playstdin|video|all|volume] [args] [output-dir]
 var ddsConfig = args.Length > 0 ? args[0] : Path.Combine("config", "dds.xml");
 var command = args.Length > 1 ? args[1].ToLowerInvariant() : "status";
-var known = new[] { "status", "record", "play", "playfile", "playstdin", "video", "all", "volume" };
+var known = new[] { "status", "record", "play", "playfile", "playstdin", "loopback", "video", "all", "volume" };
 if (!known.Contains(command))
 {
     Console.Error.WriteLine($"Unknown command '{command}'. Known: {string.Join(", ", known)}");
@@ -190,12 +190,74 @@ Console.WriteLine(command switch
     _ => $"Collecting status, microphone audio and camera frames for {seconds}s, then playing a tone.",
 });
 
+if (command == "loopback")
+{
+    lock (gate)
+    {
+        captured.Clear();
+        audioFrames = 0;
+        audioPeak = 0;
+    }
+
+    Console.WriteLine($"Recording {seconds}s from the microphone array, then playing it back on the speaker.");
+    await Task.Delay(TimeSpan.FromSeconds(seconds));
+
+    int frames;
+    short[] stereo;
+    int capturedChannels;
+    int capturedRate;
+    int peak;
+    lock (gate)
+    {
+        capturedChannels = (int)audioChannels;
+        capturedRate = (int)(audioRate == 0 ? 16000 : audioRate);
+        peak = audioPeak;
+        stereo = DownmixToStereo(captured, capturedChannels, out frames);
+    }
+
+    Console.WriteLine($"Captured {frames} frames ({frames / (double)capturedRate:F1}s), peak={peak}.");
+    if (frames == 0)
+    {
+        Console.Error.WriteLine("Nothing was captured.");
+        return 2;
+    }
+
+    if (volumeBefore < 100)
+    {
+        media.SetVolume(100);
+        volumeChanged = true;
+        Console.WriteLine($"Volume {volumeBefore} -> 100 for playback (restored afterwards).");
+    }
+
+    var published = PublishPcm(media, stereo, capturedRate, 2, 2);
+    Console.WriteLine($"Playing it back: published {published} frames.");
+
+    var loopStamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
+    var loopPath = Path.Combine(outDir, $"loopback-{loopStamp}.wav");
+    WriteWav(loopPath, new List<short>(stereo), 2, capturedRate);
+    Console.WriteLine($"Saved the downmix to {loopPath}");
+
+    await Task.Delay(TimeSpan.FromSeconds(2));
+    if (volumeChanged)
+    {
+        media.SetVolume(volumeBefore);
+        for (var i = 0; i < 20 && media.GetVolume() != volumeBefore; i++)
+        {
+            await Task.Delay(100);
+        }
+
+        Console.WriteLine($"Volume set back to {volumeBefore}.");
+    }
+
+    return 0;
+}
+
 if (command == "playstdin")
 {
     // Decode on the board and stream it in:
     //   mpg123 -q -s -r 16000 -m file.mp3 | MediaTest <dds.xml> playstdin 16000 1
     var stdinRate = args.Length > 2 && int.TryParse(args[2], out var parsedRate) ? parsedRate : 16000;
-    var stdinChannels = args.Length > 3 && int.TryParse(args[3], out var parsedChannels) ? parsedChannels : 1;
+    var stdinChannels = args.Length > 3 && int.TryParse(args[3], out var parsedChannels) ? parsedChannels : 2;
     Console.WriteLine($"Reading raw 16-bit PCM from stdin: {stdinRate} Hz, {stdinChannels} ch.");
 
     if (volumeBefore < 100)
@@ -205,7 +267,9 @@ if (command == "playstdin")
         Console.WriteLine($"Volume {volumeBefore} -> 100 for the test (restored afterwards).");
     }
 
-    var frames = PublishStream(media, Console.OpenStandardInput(), stdinRate, stdinChannels, 2);
+    var stdinFrameMs = args.Length > 4 && int.TryParse(args[4], out var parsedFrameMs) ? Math.Clamp(parsedFrameMs, 10, 500) : 20;
+    Console.WriteLine($"Frame size: {stdinFrameMs} ms.");
+    var frames = PublishStream(media, Console.OpenStandardInput(), stdinRate, stdinChannels, 2, stdinFrameMs);
     Console.WriteLine($"Published {frames} audio frames.");
     seconds = 1;
 }
@@ -216,6 +280,21 @@ if (command == "playfile")
     var lengthSeconds = pcm.Length / (double)channels / rate;
     Console.WriteLine($"Loaded {pcm.Length} samples: {rate} Hz, {channels} ch, {lengthSeconds:F1}s.");
 
+    // The official playback format is 2 channels at 16 kHz (16-bit LE), interleaved; upmix mono.
+    if (channels == 1)
+    {
+        var stereo = new short[pcm.Length * 2];
+        for (var i = 0; i < pcm.Length; i++)
+        {
+            stereo[i * 2] = pcm[i];
+            stereo[(i * 2) + 1] = pcm[i];
+        }
+
+        pcm = stereo;
+        channels = 2;
+        Console.WriteLine("Upmixed mono -> stereo; the playback topic expects 2 channels.");
+    }
+
     if (volumeBefore < 100)
     {
         media.SetVolume(100);
@@ -223,7 +302,9 @@ if (command == "playfile")
         Console.WriteLine($"Volume {volumeBefore} -> 100 for the test (restored afterwards).");
     }
 
-    var frames = PublishPcm(media, pcm, rate, channels, 2);
+    var frameMs = args.Length > 4 && int.TryParse(args[4], out var parsedFrameMs) ? Math.Clamp(parsedFrameMs, 10, 500) : 20;
+    Console.WriteLine($"Frame size: {frameMs} ms.");
+    var frames = PublishPcm(media, pcm, rate, channels, 2, frameMs);
     Console.WriteLine($"Published {frames} audio frames ({lengthSeconds:F1}s) to the playback topic.");
     seconds = 2;
 }
@@ -237,7 +318,7 @@ if (command == "play")
         Console.WriteLine($"Volume {volumeBefore} -> 100 for the test (restored afterwards).");
     }
 
-    var played = PlayTone(media, 1.0, 440, 16000, 1, 2);
+    var played = PlayTone(media, 1.0, 440, 16000, 2, 2);
     Console.WriteLine($"Published {played} audio frames to the playback topic; listening for {seconds}s.");
 }
 
@@ -252,15 +333,30 @@ if (command == "all")
         Console.WriteLine($"Volume {volumeBefore} -> 100 for the test (restored afterwards).");
     }
 
-    var played = PlayTone(media, 1.0, 440, 16000, 1, 2);
+    var played = PlayTone(media, 1.0, 440, 16000, 2, 2);
     Console.WriteLine($"Published {played} audio frames to the playback topic.");
     await Task.Delay(TimeSpan.FromSeconds(3));
 }
 
 if (volumeChanged)
 {
+    // SetVolume is fire-and-forget over DDS; poll so the value really lands before we exit.
     media.SetVolume(volumeBefore);
-    Console.WriteLine($"Volume restored to {volumeBefore}.");
+    var restored = false;
+    for (var i = 0; i < 20; i++)
+    {
+        if (media.GetVolume() == volumeBefore)
+        {
+            restored = true;
+            break;
+        }
+
+        await Task.Delay(100);
+    }
+
+    Console.WriteLine(restored
+        ? $"Volume restored to {volumeBefore}."
+        : $"Volume restore requested ({volumeBefore}); read-back still {media.GetVolume()}.");
 }
 
 media.SubscribeInternalAudioCapture(null);
@@ -351,10 +447,10 @@ static int PlayTone(MediaController controller, double toneSeconds, double frequ
 }
 
 // Publishes 16-bit PCM in 20 ms frames, paced against a wall clock so it plays in real time.
-static int PublishPcm(MediaController controller, short[] pcm, int sampleRate, int channels, uint format)
+static int PublishPcm(MediaController controller, short[] pcm, int sampleRate, int channels, uint format, int frameMs = 20)
 {
-    const int FrameMs = 20;
-    var samplesPerFrame = sampleRate * FrameMs / 1000 * channels;
+    var frameMsValue = frameMs;
+    var samplesPerFrame = sampleRate * frameMsValue / 1000 * channels;
     var clock = Stopwatch.StartNew();
     var frames = 0;
     for (var offset = 0; offset < pcm.Length; offset += samplesPerFrame)
@@ -363,16 +459,16 @@ static int PublishPcm(MediaController controller, short[] pcm, int sampleRate, i
         var buffer = new short[count];
         Array.Copy(pcm, offset, buffer, 0, count);
         PublishFrame(
-            controller, buffer, (ulong)frames + 1, (ulong)(frames * FrameMs * 1000),
-            (uint)channels, (uint)sampleRate, format, FrameMs);
+            controller, buffer, (ulong)frames + 1, ((ulong)frames * (ulong)frameMsValue * 1000),
+            (uint)channels, (uint)sampleRate, format, (uint)frameMsValue);
         frames++;
 
         if (frames % 250 == 0)
         {
-            Console.WriteLine($"  ... {(frames * FrameMs / 1000.0):F0}s published");
+            Console.WriteLine($"  ... {(frames * frameMsValue / 1000.0):F0}s published");
         }
 
-        var target = TimeSpan.FromMilliseconds(frames * (double)FrameMs);
+        var target = TimeSpan.FromMilliseconds(frames * (double)frameMsValue);
         var wait = target - clock.Elapsed;
         if (wait > TimeSpan.Zero)
         {
@@ -383,11 +479,34 @@ static int PublishPcm(MediaController controller, short[] pcm, int sampleRate, i
     return frames;
 }
 
-// Reads raw 16-bit PCM from a stream and publishes it in 20 ms frames, paced in real time.
-static int PublishStream(MediaController controller, Stream input, int sampleRate, int channels, uint format)
+// Averages the four head microphones (channels 0-3) into one signal and duplicates it to stereo,
+// skipping the reserved channels and the speaker echo so the playback does not feed back.
+static short[] DownmixToStereo(List<short> interleaved, int channels, out int frames)
 {
-    const int FrameMs = 20;
-    var bytesPerFrame = sampleRate / 1000 * FrameMs * channels * 2;
+    frames = channels == 0 ? 0 : interleaved.Count / channels;
+    var stereo = new short[frames * 2];
+    var used = Math.Clamp(channels, 1, 4);
+    for (var i = 0; i < frames; i++)
+    {
+        var sum = 0;
+        for (var c = 0; c < used; c++)
+        {
+            sum += interleaved[(i * channels) + c];
+        }
+
+        var mixed = (short)(sum / used);
+        stereo[i * 2] = mixed;
+        stereo[(i * 2) + 1] = mixed;
+    }
+
+    return stereo;
+}
+
+// Reads raw 16-bit PCM from a stream and publishes it in 20 ms frames, paced in real time.
+static int PublishStream(MediaController controller, Stream input, int sampleRate, int channels, uint format, int frameMs = 20)
+{
+    var frameMsValue = frameMs;
+    var bytesPerFrame = sampleRate / 1000 * frameMsValue * channels * 2;
     var buffer = new byte[bytesPerFrame];
     var clock = Stopwatch.StartNew();
     var frames = 0;
@@ -413,16 +532,16 @@ static int PublishStream(MediaController controller, Stream input, int sampleRat
         var samples = new short[(read + 1) / 2];
         Buffer.BlockCopy(buffer, 0, samples, 0, read - (read % 2));
         PublishFrame(
-            controller, samples, (ulong)frames + 1, (ulong)(frames * FrameMs * 1000),
-            (uint)channels, (uint)sampleRate, format, FrameMs);
+            controller, samples, (ulong)frames + 1, ((ulong)frames * (ulong)frameMsValue * 1000),
+            (uint)channels, (uint)sampleRate, format, (uint)frameMsValue);
         frames++;
 
         if (frames % 250 == 0)
         {
-            Console.WriteLine($"  ... {(frames * FrameMs / 1000.0):F0}s published");
+            Console.WriteLine($"  ... {(frames * frameMsValue / 1000.0):F0}s published");
         }
 
-        var target = TimeSpan.FromMilliseconds(frames * (double)FrameMs);
+        var target = TimeSpan.FromMilliseconds(frames * (double)frameMsValue);
         var wait = target - clock.Elapsed;
         if (wait > TimeSpan.Zero)
         {
