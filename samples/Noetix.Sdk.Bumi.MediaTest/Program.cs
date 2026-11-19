@@ -6,7 +6,7 @@ using Noetix.Sdk.Bumi;
 // Usage: MediaTest [path-to-dds.xml] [status|record|play|playfile|playstdin|video|all|volume] [args] [output-dir]
 var ddsConfig = args.Length > 0 ? args[0] : Path.Combine("config", "dds.xml");
 var command = args.Length > 1 ? args[1].ToLowerInvariant() : "status";
-var known = new[] { "status", "record", "play", "playfile", "playstdin", "loopback", "video", "all", "volume" };
+var known = new[] { "status", "config", "record", "play", "playfile", "playstdin", "loopback", "video", "all", "volume" };
 if (!known.Contains(command))
 {
     Console.Error.WriteLine($"Unknown command '{command}'. Known: {string.Join(", ", known)}");
@@ -53,6 +53,26 @@ if (!media.Init())
 }
 
 Console.WriteLine($"Volume={media.GetVolume()} timeout={media.GetTimeout()}ms cue={media.GetAudioCueEnable()}");
+
+if (command == "config")
+{
+    void Show(string name, Func<bool> get) => Console.WriteLine($"  {name,-52} {get()}");
+    Console.WriteLine("Media configuration (read-only):");
+    Console.WriteLine($"  {"Volume",-52} {media.GetVolume()} (0-200)");
+    Console.WriteLine($"  {"Timeout",-52} {media.GetTimeout()} ms");
+    Show("AudioCueEnable", media.GetAudioCueEnable);
+    Show("InternalCaptureAudioDataToAgent", media.GetInternalCaptureAudioDataToAgentEnable);
+    Show("ExternalCustomAudioDataToAgent", media.GetExternalCustomAudioDataToAgentEnable);
+    Show("InternalAgentAudioDataToPlayback", media.GetInternalAgentAudioDataToPlaybackEnable);
+    Show("ExternalCustomAudioDataToPlayback", media.GetExternalCustomAudioDataToPlaybackEnable);
+    Show("ExternalCustomAudioDataToAgentUseInternal3a", media.GetExternalCustomAudioDataToAgentUseInternal3a);
+    Show("InternalCaptureVideoDataToAgent", media.GetInternalCaptureVideoDataToAgentEnable);
+    Show("ExternalCustomVideoDataToAgent", media.GetExternalCustomVideoDataToAgentEnable);
+    Console.WriteLine($"  {"WakeupWords",-52} '{SafeRead(media.GetWakeupWords)}'");
+    Console.WriteLine($"  {"WakeupResponseWords",-52} '{SafeRead(media.GetWakeupResponseWords)}'");
+    Console.WriteLine($"  {"SleepResponseWords",-52} '{SafeRead(media.GetSleepResponseWords)}'");
+    return 0;
+}
 
 if (command == "volume")
 {
@@ -627,6 +647,11 @@ static (short[] Samples, int Rate, int Channels) ReadWav(string path)
     }
 
     throw new InvalidOperationException($"{path} has no data chunk.");
+}
+
+static string SafeRead(Func<string> read)
+{
+    try { return read(); } catch (NoetixSdkException ex) { return $"(unavailable: {ex.Message})"; }
 }
 
 static string Magic(byte[] data) => data.Length >= 2 && data[0] == 0xFF && data[1] == 0xD8

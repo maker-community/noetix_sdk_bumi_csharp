@@ -22,6 +22,7 @@ MediaTest [path-to-dds.xml] [status|record|play|video|all] [seconds] [output-dir
 | `loopback <seconds>` | Records the microphone, downmixes the four head mics to stereo, then plays it back |
 | `all` | Collects status + audio + video, then plays the tone |
 | `volume [n]` | Prints the current volume (0–200); sets it when `n` is given |
+| `config` | Prints every media switch, the timeout and the current wake words |
 
 The module does **not** decode compressed audio, so decode on the board and pipe it in. `libmpg123` is already
 installed on the Bumi compute board (that is what the GStreamer `mpg123audiodec` plugin uses), so an mp3 never has to be
@@ -101,6 +102,25 @@ stream already has faces blurred, which is what 脱敏 means.
   tone is too loud or too quiet.
 - The voice system may report `Sleeped` (`CmdSleeped`) while the robot is idle; external playback still works.
 
+## Replacing the built-in voice agent
+
+The wake word, speech recognition, dialog and text-to-speech run in the **voice module on the motion board**; the
+compute board only exchanges audio over DDS. The motion board is not open to users, so custom voice interaction is
+done by re-pointing the data flow instead:
+
+| Step | API |
+| --- | --- |
+| Stop feeding the built-in agent | `SetInternalCaptureAudioDataToAgentEnable(false)` |
+| Stop the agent's replies on the speaker | `SetInternalAgentAudioDataToPlaybackEnable(false)` |
+| Take the microphone audio | `SubscribeInternalAudioCapture` (8 ch, 16 kHz) |
+| Speak your own answer | `PublishExternalAudioPlaybackStream` (2 ch, 16 kHz) |
+| Change the wake word | `AddWakeupWords` / `ResetWakeupWords`, or detect it yourself |
+
+`MediaTest ... config` prints every switch plus the current wake words, so the state can be checked before changing it.
+
+> **Safety:** the factory wake-word list contains 停止运动 ("stop moving"). Whether that still works after the agent
+> input is disabled has **not** been verified here. Check it before relying on it, or keep the existing wake words.
+
 ## Safety
 
 Audio and video only. This sample sends no motion commands and does not stop or restart any robot service.
@@ -125,6 +145,7 @@ MediaTest [dds.xml 路径] [status|record|play|video|all] [秒数] [输出目录
 | `loopback <秒数>` | 录一段麦克风，把 4 个头顶麦混成立体声后回放 |
 | `all` | 采集状态 + 音频 + 视频，然后播放音调 |
 | `volume [n]` | 打印当前音量（0–200）；给了 `n` 就设置 |
+| `config` | 打印所有媒体开关、超时时间和当前唤醒词 |
 
 语音模块**不会解码压缩音频**，所以在板子上解码后直接喂进来即可。Bumi 算力板上**已经装了 `libmpg123`**
 （GStreamer 的 `mpg123audiodec` 插件就是用它），因此 mp3 完全不用先在 PC 上转换：
@@ -193,6 +214,24 @@ dotnet MediaTest.dll dds.xml playfile music-hp.wav media-out 100   # 100 ms 帧
   麦克风阵列并没有接在算力板上。
 - `play` 会在测试期间把音量调到 100，结束后恢复原值。如果音调太响或太轻，改这个常量即可。
 - 机器人空闲时语音系统可能上报 `Sleeped`（`CmdSleeped`），外部播放仍然有效。
+
+## 替换内置语音助手
+
+关键词唤醒、语音识别、对话和 TTS 都在**运控板的语音模块**里，算力板只通过 DDS 交换音频。运控板不对用户开放，
+所以自定义语音交互的正确做法是**改写数据流向**，而不是去连运控板：
+
+| 步骤 | 接口 |
+| --- | --- |
+| 停止把麦克风音频送给内置 agent | `SetInternalCaptureAudioDataToAgentEnable(false)` |
+| 停止内置 agent 的回复播放 | `SetInternalAgentAudioDataToPlaybackEnable(false)` |
+| 自己取麦克风音频 | `SubscribeInternalAudioCapture`（8 通道、16 kHz） |
+| 播放自己的回复 | `PublishExternalAudioPlaybackStream`（2 通道、16 kHz） |
+| 改唤醒词 | `AddWakeupWords` / `ResetWakeupWords`，或自己做唤醒检测 |
+
+`MediaTest ... config` 会打印全部开关和当前唤醒词，方便改之前先确认状态。
+
+> **安全提醒**：出厂唤醒词里有"停止运动"。关闭 agent 输入后它是否仍然生效，本仓库**没有验证过**。
+> 依赖它之前请先确认，或者保留现有唤醒词。
 
 ## 安全
 
