@@ -22,6 +22,7 @@ Verified against official SDK 3.1.0 (`noetix_sdk_bumi`, shallow clone, November 
 | C# loads the high native wrapper on the compute board | Yes, .NET Runtime 10.0.15 / aarch64; SDK version `3.1.0`, C API version `1` |
 | C# initializes `HighController` and receives live hardware status on a physical Bumi | Yes, two read-only ARM64 [StatusMonitor](arm64-board-test.md) runs on 2026-11-18: 2,330 and 2,324 callbacks in five-second subscription windows; both exited `0` |
 | C# publishes high-level actions that the physical robot executes | Yes, 2026-11-19 on the ARM64 compute board: `Swing` (2 → 8 → 2), `Shake` (2 → 9 → 2) and `Cheer` (2 → 10 → 2) all ran and returned to walking mode by themselves; smallest ankle travel was `Swing` at 0.373 rad, largest joint delta 1.971 rad (`Cheer`); steps, the 21-joint id map and full logs in [motion-test.md](motion-test.md) |
+| Media path from C# on a physical Bumi | Yes, 2026-11-19: 8-channel/16 kHz microphone capture with real signal, de-sensed 640×480@30 video with faces blurred, and a published tone echoed on the playback topic; see [MediaTest](../samples/Noetix.Sdk.Bumi.MediaTest/README.md) |
 
 ### Observed
 
@@ -77,14 +78,28 @@ Verified against official SDK 3.1.0 (`noetix_sdk_bumi`, shallow clone, November 
   arm-only: the black-box balance controller always involves the legs (hip/knee ≈ 0.9 rad).
 - On the same runs, 13 of 21 motors reported `error=1`. The official fault table lists `02H`–`0EH` only, so `1` is not
   a documented fault code; its meaning is still unknown. `mean|tau|` was 0.81–0.98 N·m.
+- The microphone is **not** wired to the compute board: `/dev/snd` is only held by `pulseaudio` (control nodes, no
+  capture node), a local `arecord` of 2 s produced pure silence (peak 0), while `SubscribeInternalAudioCapture`
+  delivered 8 channels at 16 kHz with real signal. Channels 0–3 are the head microphones, 4–5 are reserved (peak 1),
+  6–7 are the speaker echo.
+- The de-sensed video stream delivers raw YUYV422 640×480 at 30 fps (614,400 bytes per frame, ~15 MB/s) with faces
+  blurred, as long as `noetix-video-capture` is publishing. `SubscribeInternalVideoCapture` delivered 0 frames on this
+  compute-board model.
+- A 1 s 440 Hz tone published with `PublishExternalAudioPlaybackStream` was echoed on `SubscribeInternalAudioPlayback`
+  (50 frames back) and the microphones peaked at 12,795 during playback versus 179 while idle, so the speaker really
+  produced sound. `GetVolume()` was 1 of the 0–200 range, so the test raised it to 100 and restored it afterwards.
+- The voice system reported `Sleeped` (`CmdSleeped`) while idle; external playback still worked.
 - Separately from the SDK, a community Xbox receiver driver was built and tested for Linux input on one Bumi compute
   board. See [xbox-wireless-controller.md](xbox-wireless-controller.md) for the environment and limits.
 
 ### Not verified
 
 - Executing the remaining `PublishCmd` actions (dances, teach/playback, `FALLTOSTAND`/`STANDTOFALL`) on a physical
-  robot, and walking under `WALK` velocity commands on the ground. Audio/video streams, and what the `format` field of
-  `AudioStream` means beyond the official example (`2`), are also unverified.
+  robot, and walking under `WALK` velocity commands on the ground.
+- What the `format` field of `AudioStream` means beyond the observed value `2` (both capture and playback were `2`),
+  and the semantics of `VideoStream.format` (observed `0` with 2 bytes per pixel).
+- Publishing external video from this binding, feeding external audio to the built-in agent, wake words, and
+  `SetSystemControl`.
 - The meaning of `MotorState.error == 1`, seen on 13 of 21 motors while the robot was suspended.
 - aarch64 low native wrapper build and controller runtime behavior.
 - Behaviour when the application stops sending commands (does the robot stop by itself?).
@@ -114,6 +129,7 @@ Verified against official SDK 3.1.0 (`noetix_sdk_bumi`, shallow clone, November 
 | C# 可在算力板上加载 High 原生封装 | 是，.NET Runtime 10.0.15 / aarch64；SDK 版本 `3.1.0`，C API 版本 `1` |
 | C# 可在实体 Bumi 上初始化 `HighController` 并接收实时硬件状态 | 是，2026-11-18 在 ARM64 上进行了两次只读 [StatusMonitor](arm64-board-test.md) 运行：在五秒订阅窗口内分别收到 2,330 和 2,324 次回调；两次都以 `0` 退出 |
 | C# 发布的高层动作可由实体机器人执行 | 是，2026-11-19 在 ARM64 算力板上：`Swing`（2 → 8 → 2）、`Shake`（2 → 9 → 2）和 `Cheer`（2 → 10 → 2）都执行了，并自行回到走路模式；最小踝关节位移为 `Swing` 的 0.373 rad，最大关节变化量为 1.971 rad（`Cheer`）；步骤、21 关节 id 映射和完整日志见 [motion-test.md](motion-test.md) |
+| C# 在实体机器人上走通媒体通路 | 是，2026-11-19：8 通道 / 16 kHz 麦克风采集有真实信号，脱敏视频 640×480@30 且人脸已打码，发布的音调在播放话题上回传；见 [MediaTest](../samples/Noetix.Sdk.Bumi.MediaTest/README.md) |
 
 ### 观察到
 
@@ -169,14 +185,25 @@ Verified against official SDK 3.1.0 (`noetix_sdk_bumi`, shallow clone, November 
   纯手臂动作：黑盒平衡控制器总会涉及腿部（髋/膝约 0.9 rad）。
 - 在同批运行中，21 个电机里有 13 个报告 `error=1`。官方故障表只列出 `02H`–`0EH`，因此 `1` 不是
   有文档记录的故障码；其含义仍然未知。`mean|tau|` 为 0.81–0.98 N·m。
+- 麦克风**没有**接在算力板上：`/dev/snd` 只有 `pulseaudio` 打开了控制节点（没有采集节点），
+  本地 `arecord` 录 2 s 得到纯静音（峰值为 0），而 `SubscribeInternalAudioCapture` 收到 8 通道、16 kHz、
+  有真实信号的数据。通道 0–3 是头顶麦克风，4–5 是预留（峰值 1），6–7 是扬声器回采。
+- 只要 `noetix-video-capture` 在发布，脱敏视频流就是原始 YUYV422 640×480@30（614,400 字节/帧，约 15 MB/s），
+  人脸已打码。在该带算力板的机型上 `SubscribeInternalVideoCapture` 收到 0 帧。
+- 用 `PublishExternalAudioPlaybackStream` 发布 1 s 440 Hz 音调后，`SubscribeInternalAudioPlayback` 回传了
+  50 帧，且播放期间麦克风峰值从空闲时的 179 升到 12,795，说明扬声器确实出声。`GetVolume()` 为 0–200 中的 1，
+  因此测试时临时调到 100，结束后已恢复。
+- 机器人空闲时语音系统上报 `Sleeped`（`CmdSleeped`），外部播放仍然有效。
 - 与 SDK 无关，另有一个社区 Xbox 接收器驱动在某一台 Bumi 算力板上完成了 Linux 输入的构建与
   测试。环境与限制见 [xbox-wireless-controller.md](xbox-wireless-controller.md)。
 
 ### 未验证
 
 - 在实体机器人上执行其余 `PublishCmd` 动作（舞蹈、示教/复现、`FALLTOSTAND`/`STANDTOFALL`），
-  以及在地面上按 `WALK` 速度命令行走。音频/视频流，以及 `AudioStream` 的 `format` 字段
-  在官方示例（`2`）之外的含义，也都未验证。
+  以及在地面上按 `WALK` 速度命令行走。
+- `AudioStream` 的 `format` 字段在观测到的 `2` 之外的含义（采集和播放都是 `2`），以及 `VideoStream.format`
+  的语义（观测到 `0`，每像素 2 字节）。
+- 从本绑定发布外部视频、把外部音频送给内置智能体、唤醒词，以及 `SetSystemControl`。
 - `MotorState.error == 1` 的含义，该值在机器人悬吊时于 21 个电机中的 13 个上出现。
 - aarch64 上 low 原生封装的构建以及控制器的运行时行为。
 - 应用程序停止发送命令时的行为（机器人会自行停止吗？）。
