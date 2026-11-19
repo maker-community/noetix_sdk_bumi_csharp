@@ -295,11 +295,15 @@ if (command == "playfile")
         Console.WriteLine("Upmixed mono -> stereo; the playback topic expects 2 channels.");
     }
 
-    if (volumeBefore < 100)
+    // args[5] sets an explicit volume for the test, otherwise just make sure it is audible.
+    var targetVolume = args.Length > 5 && int.TryParse(args[5], out var requestedVolume)
+        ? Math.Clamp(requestedVolume, 0, 200)
+        : (volumeBefore < 100 ? 100 : volumeBefore);
+    if (targetVolume != volumeBefore)
     {
-        media.SetVolume(100);
+        media.SetVolume(targetVolume);
         volumeChanged = true;
-        Console.WriteLine($"Volume {volumeBefore} -> 100 for the test (restored afterwards).");
+        Console.WriteLine($"Volume {volumeBefore} -> {targetVolume} for the test (restored afterwards).");
     }
 
     var frameMs = args.Length > 4 && int.TryParse(args[4], out var parsedFrameMs) ? Math.Clamp(parsedFrameMs, 10, 500) : 20;

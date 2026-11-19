@@ -53,11 +53,12 @@ gst-launch-1.0 -q filesrc location=music.mp3 ! decodebin ! audioconvert ! audior
   ! audio/x-raw,format=S16LE,rate=16000,channels=2 ! wavenc ! filesink location=music.wav
 sox music.wav music-hp.wav highpass 250 gain -6
 
-dotnet MediaTest.dll dds.xml playfile music-hp.wav media-out 100   # 100 ms frames
+dotnet MediaTest.dll dds.xml playfile music-hp.wav media-out 100 120   # 100 ms frames, volume 120
 ```
 
 Measured on 2026-11-19: mono and unfiltered music were clearly noisy; stereo alone helped, and adding the 250 Hz
-high-pass plus -6 dB removed the noise entirely. Frame size (20 ms vs 100 ms) changed nothing.
+high-pass plus -6 dB removed the noise entirely. Frame size (20 ms vs 100 ms) changed nothing. Volume 120 of 200 was
+the best of 80 / 120 / 160 / 200.
 
 Recorded audio is written as 16-bit PCM WAV and the first video frame of each stream is written next to it, so you can
 inspect both outside the SDK.
@@ -79,10 +80,18 @@ stream already has faces blurred, which is what 脱敏 means.
 
 ## Caveats
 
+- **If playback is silent, check the phone app first.** Turning the voice assistant off in the app also silences
+  `publish_external_audio_playback_stream`; the topic still accepts frames and echoes them back, so the SDK looks
+  healthy while nothing is audible. Confirm sound by watching the microphone peak (ambient ≈ 95, playing ≈ 15,000).
 - **Playback noise had two causes, both now understood.** Sending **mono** is wrong — the playback topic is specified
   as 2 channels — and low-frequency music makes the small speaker break up. With stereo, a 250 Hz high-pass and about
   -6 dB of headroom the same music is clean on the robot. Frame size (20 ms vs 100 ms) made no measurable difference,
   so per-frame publishing jitter is not a factor. Playback tests should use the chain below.
+- **Tone is limited by the speaker, not by the client.** Measured at volume 120: 44.1 kHz sounded *worse* than 16 kHz
+  (the module resamples internally), and a low-mid/treble EQ (+2 dB at 300 Hz, +4 dB at 3 kHz) plus lowering the
+  high-pass from 250 Hz to 130 Hz were both below the audibility threshold. The volume sweet spot is about **120 of
+  200**; above that the small speaker distorts and below it the result is thin. 16 kHz is a hard ceiling, so there is
+  no content above 8 kHz to work with.
 - `SubscribeInternalVideoCapture` stays empty on EDU models with a compute board. The official flow is to publish an
   external video stream first; `noetix-video-capture.service` is already doing that, which is why the **de-sensed**
   stream works.
@@ -150,7 +159,7 @@ dotnet MediaTest.dll dds.xml playfile music-hp.wav media-out 100   # 100 ms 帧
 ```
 
 2026-11-19 实测：单声道和未滤波的音乐明显有杂音；仅改立体声有改善，再加 250 Hz 高通和 -6 dB 后完全干净。
-帧长（20 ms 与 100 ms）没有任何差别。
+帧长（20 ms 与 100 ms）没有任何差别。音量 80/120/160/200 里 **120** 最好。
 
 录音以 16 bit PCM WAV 保存，两路视频各自的第一帧也写在同一目录，方便在 SDK 之外检查。
 
@@ -170,9 +179,14 @@ dotnet MediaTest.dll dds.xml playfile music-hp.wav media-out 100   # 100 ms 帧
 
 ## 注意事项
 
+- **播放没声音时，先检查手机 App。** App 里关掉语音助手后，`publish_external_audio_playback_stream` 也不会有声音；
+  但话题照样接收并回传帧，所以 SDK 看起来一切正常。判断是否真的出声，看麦克风回采峰值（环境约 95，播放时约 15,000）。
 - **播放杂音有两个原因，现在都清楚了。** 一是发送**单声道**——播放话题规定是 **2 声道**；二是音乐的低频让机身小喇叭破音。
   改用立体声，并加 250 Hz 高通和约 -6 dB 余量后，同一首音乐在机器人上是干净的。帧长（20 ms 与 100 ms）
   实测没有差别，所以逐帧发布抖动不是原因。播放测试请用下面的链路。
+- **音色受限于扬声器，不在客户端。** 音量 120 下实测：44.1 kHz **比** 16 kHz 更差（模块内部会重采样）；
+  中低频/高频 EQ（300 Hz +2 dB、3 kHz +4 dB）以及把高通从 250 Hz 降到 130 Hz，**都在可听阈值以下**。
+  音量甜点约为 **200 中的 120**：再高小喇叭就破音，再低就发虚。16 kHz 是硬上限，8 kHz 以上没有任何内容。
 - 带算力板的 EDU 机型上 `SubscribeInternalVideoCapture` 始终为空。官方流程是先发布外部视频流；
   `noetix-video-capture.service` 已经在做这件事，所以**脱敏**流可用。
 - 播放走的是机器人的语音模块，与本地 `/dev/snd` 无关。算力板自己的模拟输入录出来是纯静音——
