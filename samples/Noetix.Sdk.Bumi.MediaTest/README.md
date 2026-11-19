@@ -23,6 +23,7 @@ MediaTest [path-to-dds.xml] [status|record|play|video|all] [seconds] [output-dir
 | `all` | Collects status + audio + video, then plays the tone |
 | `volume [n]` | Prints the current volume (0–200); sets it when `n` is given |
 | `config` | Prints every media switch, the timeout and the current wake words |
+| `system <wakeup\|sleep\|reset>` | Sends a system control command to the voice module |
 
 The module does **not** decode compressed audio, so decode on the board and pipe it in. `libmpg123` is already
 installed on the Bumi compute board (that is what the GStreamer `mpg123audiodec` plugin uses), so an mp3 never has to be
@@ -146,6 +147,7 @@ MediaTest [dds.xml 路径] [status|record|play|video|all] [秒数] [输出目录
 | `all` | 采集状态 + 音频 + 视频，然后播放音调 |
 | `volume [n]` | 打印当前音量（0–200）；给了 `n` 就设置 |
 | `config` | 打印所有媒体开关、超时时间和当前唤醒词 |
+| `system <wakeup\|sleep\|reset>` | 向语音模块发送系统控制指令 |
 
 语音模块**不会解码压缩音频**，所以在板子上解码后直接喂进来即可。Bumi 算力板上**已经装了 `libmpg123`**
 （GStreamer 的 `mpg123audiodec` 插件就是用它），因此 mp3 完全不用先在 PC 上转换：

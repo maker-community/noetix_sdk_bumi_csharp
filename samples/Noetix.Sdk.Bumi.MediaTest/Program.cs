@@ -6,7 +6,7 @@ using Noetix.Sdk.Bumi;
 // Usage: MediaTest [path-to-dds.xml] [status|record|play|playfile|playstdin|video|all|volume] [args] [output-dir]
 var ddsConfig = args.Length > 0 ? args[0] : Path.Combine("config", "dds.xml");
 var command = args.Length > 1 ? args[1].ToLowerInvariant() : "status";
-var known = new[] { "status", "config", "record", "play", "playfile", "playstdin", "loopback", "video", "all", "volume" };
+var known = new[] { "status", "config", "system", "record", "play", "playfile", "playstdin", "loopback", "video", "all", "volume" };
 if (!known.Contains(command))
 {
     Console.Error.WriteLine($"Unknown command '{command}'. Known: {string.Join(", ", known)}");
@@ -71,6 +71,27 @@ if (command == "config")
     Console.WriteLine($"  {"WakeupWords",-52} '{SafeRead(media.GetWakeupWords)}'");
     Console.WriteLine($"  {"WakeupResponseWords",-52} '{SafeRead(media.GetWakeupResponseWords)}'");
     Console.WriteLine($"  {"SleepResponseWords",-52} '{SafeRead(media.GetSleepResponseWords)}'");
+    return 0;
+}
+
+if (command == "system")
+{
+    var argument = args.Length > 2 ? args[2].ToLowerInvariant() : string.Empty;
+    SystemControlType? type = argument switch
+    {
+        "wakeup" => SystemControlType.ToWakeup,
+        "sleep" => SystemControlType.ToSleep,
+        "reset" => SystemControlType.ToReset,
+        _ => null,
+    };
+    if (type is null)
+    {
+        Console.Error.WriteLine("Usage: MediaTest <dds.xml> system <wakeup|sleep|reset>");
+        return 64;
+    }
+
+    media.SetSystemControl(type.Value, false);
+    Console.WriteLine($"Sent {type.Value} to the voice system.");
     return 0;
 }
 
