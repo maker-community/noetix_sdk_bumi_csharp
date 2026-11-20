@@ -104,6 +104,13 @@
 
 路线 A 下，整段 23.4 秒录音中扬声器回采 ch6/7 峰值始终为 1–2，确认唤醒应答也被静音。
 
+**但这条事件本身还能用**：事件照常发出，只是没有声音。所以可以把它当作自建助手的触发器——订阅
+`SubscribeSystemStatus`，收到 `Wakeuped` + `AudioWakeuped` 就开始自己的一轮对话，等于免费复用了机器人的
+「你好布米」唤醒词，**不需要任何额外的关键词模型**。[measured] 2026-11-20 在真机上验证：服务空闲时说出
+唤醒词，事件触发后成功连上、完成一轮问答，并回到聆听状态。
+
+注意回调运行在原生 SDK 线程上，必须立刻返回；而且这个状态可能重复上报，需要去抖。
+
 ### 5. 三个必须知道的坑
 
 1. **`mic→agent` 是总开关**。名字看起来只是"要不要把麦克风音频给 agent"，实际会连唤醒检测和
@@ -278,6 +285,13 @@ Only `mic→agent = off` kills playback, and waking the module or re-arming the 
 
 Under option A the speaker echo channels stayed at 1-2 for the whole 23.4 s recording, which confirms the wake
 response is silenced too.
+
+**The event itself is still usable.** It keeps firing, just silently, so it can drive your own assistant: subscribe
+to `SubscribeSystemStatus` and start a turn on `Wakeuped` + `AudioWakeuped` to reuse the robot's "你好布米" wake word
+for free, with **no extra keyword model**. [measured] Verified on the robot on 2026-11-20: with the service idle,
+saying the wake word triggered the event, the service connected, answered one turn and went back to listening.
+
+The callback runs on a native SDK thread, so it must return immediately, and the status can repeat, so debounce it.
 
 ### 5. Three pitfalls
 

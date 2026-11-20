@@ -95,6 +95,14 @@ Verified against official SDK 3.1.0 (`noetix_sdk_bumi`, shallow clone, November 
   so per-frame publishing jitter is not a factor.
 - Microphone gain at 1-2 m is low: speech peaked around **650 of 32768** (≈ -34 dBFS) while ambient noise sat at ~95,
   so a straight record-and-play loopback is faint and its noise floor is audible; about +20 dB of gain is needed.
+- **The capture callback delivers 160 samples (10 ms) per call.** The Opus encoder in this project takes exactly
+  960 samples (60 ms) and pads or truncates anything else, so feeding it raw callback chunks produced frames of
+  10 ms speech plus 50 ms silence and the server returned no ASR result at all. Buffering into exact 60 ms frames
+  fixed it; the same code was fine on a desktop sound card because SoundFlow already delivered 60 ms chunks.
+- **The built-in wake word can drive a custom assistant.** Under option A the vendor agent still reports
+  `SystemStatus(Value=Wakeuped, Reason=AudioWakeuped)` when "你好布米" is spoken, it just stays silent.
+  Subscribing to `SubscribeSystemStatus` and starting a turn on that event reuses the robot's own wake word,
+  so no keyword model is needed.
 - **Playback is silent when the phone app turns the voice assistant off**, even though the topic keeps accepting and
   echoing frames. This explained a confusing round of tests where nothing was audible but every API call succeeded.
   Verify sound with the microphone peak: ambient ≈ 95, playing ≈ 15,000.
@@ -217,6 +225,12 @@ Verified against official SDK 3.1.0 (`noetix_sdk_bumi`, shallow clone, November 
   帧长（20 ms 与 100 ms）没有差别，说明逐帧发布抖动不是原因。
 - 麦克风在 1–2 米处的增益偏低：说话峰值约 **650 / 32768**（≈ -34 dBFS），环境底噪约 95，
   因此直接"录了再放"声音很轻且能听到底噪，需要约 +20 dB 增益。
+- **采集回调每次只给 160 样本（10 ms）**。本项目的 Opus 编码器要求严格 960 样本（60 ms），长度不符时会补零或截断，
+  所以直接把回调块喂进去得到的是"10 ms 语音 + 50 ms 静音"，服务端完全没有识别结果。按 60 ms 重新分帧后恢复正常；
+  同一份代码在电脑声卡上没问题，因为 SoundFlow 本来就按 60 ms 交付。
+- **内置唤醒词可以用来驱动自建助手**。路线 A 下说"你好布米"时，厂商智能体照常上报
+  `SystemStatus(Value=Wakeuped, Reason=AudioWakeuped)`，只是不出声。订阅 `SubscribeSystemStatus` 并在该事件上
+  开始自己的一轮对话，就免费复用了机器人自带的唤醒词，不需要任何关键词模型。
 - **手机 App 关闭语音助手后，外部音频播放也没有声音**，但播放话题仍然接收并回传帧。这解释了一轮"所有 API 都成功却没声音"
   的困惑测试。判断是否真的出声看麦克风峰值：环境约 95，播放时约 15,000。
 - 媒体路由开关 `set_internal_capture_audio_data_to_agent_enable(false)` 是**整个音频子系统的总开关**：
