@@ -98,6 +98,12 @@ Verified against official SDK 3.1.0 (`noetix_sdk_bumi`, shallow clone, November 
 - **Playback is silent when the phone app turns the voice assistant off**, even though the topic keeps accepting and
   echoing frames. This explained a confusing round of tests where nothing was audible but every API call succeeded.
   Verify sound with the microphone peak: ambient ≈ 95, playing ≈ 15,000.
+- The media routing switch `set_internal_capture_audio_data_to_agent_enable(false)` is a **master switch for the whole
+  audio subsystem**: it stops wake-word detection *and* external playback, and neither `SetSystemControl(ToWakeUp)` nor
+  re-setting the routing switches restores them (measured with microphone peaks of 232-358 versus 6,249-6,663 with it
+  enabled). `set_internal_agent_audio_data_to_playback_enable(false)` only silences the agent — playback keeps working
+  and even the wake response 我在 is muted. Consequence: "disable the built-in agent and still use the speaker" is not
+  possible on this firmware; see [voice-assistant.md](voice-assistant.md).
 - Volume sweep (80 / 120 / 160 / 200 of 200) at 16 kHz: **120** was the best compromise; louder distorted and quieter
   sounded thin. 44.1 kHz sounded worse than 16 kHz, and an EQ (+2 dB at 300 Hz, +4 dB at 3 kHz) or a lower high-pass
   (130 Hz instead of 250 Hz) were both inaudible, so the tone is limited by the speaker rather than the client.
@@ -213,6 +219,11 @@ Verified against official SDK 3.1.0 (`noetix_sdk_bumi`, shallow clone, November 
   因此直接"录了再放"声音很轻且能听到底噪，需要约 +20 dB 增益。
 - **手机 App 关闭语音助手后，外部音频播放也没有声音**，但播放话题仍然接收并回传帧。这解释了一轮"所有 API 都成功却没声音"
   的困惑测试。判断是否真的出声看麦克风峰值：环境约 95，播放时约 15,000。
+- 媒体路由开关 `set_internal_capture_audio_data_to_agent_enable(false)` 是**整个音频子系统的总开关**：
+  它同时停掉唤醒词检测**和**外部播放，`SetSystemControl(ToWakeUp)` 与重新设置路由都无法恢复
+  （实测麦克风峰值 232–358，而开启时为 6,249–6,663）。`set_internal_agent_audio_data_to_playback_enable(false)`
+  只静音智能体，播放照常，连唤醒应答"我在"也会被静音。结论：当前固件上"关掉内置智能体又保留扬声器"做不到，
+  详见 [voice-assistant.md](voice-assistant.md)。
 - 音量扫描（0–200 中的 80 / 120 / 160 / 200，16 kHz）：**120** 最平衡，更高会破音、更低发虚。
   44.1 kHz 比 16 kHz 更差；EQ（300 Hz +2 dB、3 kHz +4 dB）与把高通从 250 Hz 降到 130 Hz 都听不出差别，
   说明音色受限于扬声器而非客户端。

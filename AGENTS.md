@@ -114,9 +114,9 @@ NOETIX_BUMI_NATIVE_TESTS=1 LD_LIBRARY_PATH=native/build dotnet test
   ```
 
   The original language goes first (English-first for `README.md` concepts, `docs/verification.md`,
-  `docs/arm64-board-test.md`; Chinese-first for `docs/motion-test.md`, `docs/edu-pro-research.md`,
-  `docs/compute-board-services.md`). Short documents may instead interleave each English paragraph with its Chinese
-  counterpart, as `README.md` and the FollowDemo README do.
+  `docs/arm64-board-test.md`; Chinese-first for `docs/motion-test.md`, `docs/voice-assistant.md`,
+  `docs/edu-pro-research.md`, `docs/compute-board-services.md`). Short documents may instead interleave each English
+  paragraph with its Chinese counterpart, as `README.md` and the FollowDemo README do.
 - Mark claims as **[official]** (stated by Noetix docs/source), **[third-party]** (community work such as
   `docs/xbox-wireless-controller.md`), or **[inference]** / **[measured]** (needs verification / observed on the robot),
   in both halves.
@@ -236,7 +236,7 @@ NOETIX_BUMI_NATIVE_TESTS=1 LD_LIBRARY_PATH=native/build dotnet test
   ```
 
   原文语言放在前面（`docs/verification.md`、`docs/arm64-board-test.md` 英文在前；`docs/motion-test.md`、
-  `docs/edu-pro-research.md`、`docs/compute-board-services.md` 中文在前）。短文档也可以逐段交错对照，
+  `docs/voice-assistant.md`、`docs/edu-pro-research.md`、`docs/compute-board-services.md` 中文在前）。短文档也可以逐段交错对照，
   就像 `README.md` 和 FollowDemo 的 README 那样。
 - 结论要标注 **[official]**（Noetix 文档/源码明确说明）、**[third-party]**（社区方案，例如
   `docs/xbox-wireless-controller.md`）、**[inference]** / **[measured]**（待验证 / 已在真机观察），两半都要标。
