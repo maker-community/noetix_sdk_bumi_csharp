@@ -115,6 +115,8 @@ Verified against official SDK 3.1.0 (`noetix_sdk_bumi`, shallow clone, November 
 - Volume sweep (80 / 120 / 160 / 200 of 200) at 16 kHz: **120** was the best compromise; louder distorted and quieter
   sounded thin. 44.1 kHz sounded worse than 16 kHz, and an EQ (+2 dB at 300 Hz, +4 dB at 3 kHz) or a lower high-pass
   (130 Hz instead of 250 Hz) were both inaudible, so the tone is limited by the speaker rather than the client.
+  Quantitative analysis (volume sweep, low-band distortion, playback gap statistics) is in
+  [audio-quality.md](audio-quality.md).
 - Separately from the SDK, a community Xbox receiver driver was built and tested for Linux input on one Bumi compute
   board. See [xbox-wireless-controller.md](xbox-wireless-controller.md) for the environment and limits.
 
@@ -240,7 +242,8 @@ Verified against official SDK 3.1.0 (`noetix_sdk_bumi`, shallow clone, November 
   详见 [voice-assistant.md](voice-assistant.md)。
 - 音量扫描（0–200 中的 80 / 120 / 160 / 200，16 kHz）：**120** 最平衡，更高会破音、更低发虚。
   44.1 kHz 比 16 kHz 更差；EQ（300 Hz +2 dB、3 kHz +4 dB）与把高通从 250 Hz 降到 130 Hz 都听不出差别，
-  说明音色受限于扬声器而非客户端。
+  说明音色受限于扬声器而非客户端。定量分析（音量扫描、低频失真、播放缺口统计）见
+  [audio-quality.md](audio-quality.md)。
 - 与 SDK 无关，另有一个社区 Xbox 接收器驱动在某一台 Bumi 算力板上完成了 Linux 输入的构建与
   测试。环境与限制见 [xbox-wireless-controller.md](xbox-wireless-controller.md)。
 
